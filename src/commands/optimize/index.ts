@@ -1,4 +1,4 @@
-import { statSync } from "fs";
+import { statSync, type PathLike } from "fs";
 import { resolve, dirname, basename, extname, join } from "path";
 
 import { Result } from "better-result";
@@ -7,13 +7,52 @@ import type { Command } from "commander";
 import { error, info, success, header, formatSize, exitOnError } from "~/utils/display.js";
 import { resolveEntryPath } from "~/utils/loader.js";
 
-interface OptimizeOptions {
+export const OPTIMIZE_TARGETS = ["bun", "node", "browser"] as const;
+
+export type OptimizeTarget = (typeof OPTIMIZE_TARGETS)[number];
+
+/** Resolved options for `elysia optimize` */
+export interface OptimizeResolvedOptions {
   output: string;
   minify: boolean;
-  target: "bun" | "node" | "browser";
+  target: OptimizeTarget;
   analyze: boolean;
   dryRun: boolean;
   external: string[];
+}
+
+export type OptimizeCliOptionsRaw = Partial<
+  Omit<OptimizeResolvedOptions, "target" | "output" | "dryRun"> & {
+    target?: string;
+    output?: string;
+    dryRun?: boolean;
+  }
+>;
+
+function isOptimizeTarget(s: string): s is OptimizeTarget {
+  return (OPTIMIZE_TARGETS as readonly string[]).includes(s);
+}
+
+function parseOptimizeOptions(
+  filePath: string,
+  raw: OptimizeCliOptionsRaw,
+): Result<OptimizeResolvedOptions, Error> {
+  const targetStr = raw.target ?? "node";
+  if (!isOptimizeTarget(targetStr)) {
+    return Result.err(
+      new Error(`Invalid target: "${targetStr}". Must be one of: ${OPTIMIZE_TARGETS.join(", ")}`),
+    );
+  }
+  const target = targetStr;
+  const output = resolveOutputPath(filePath, raw.output);
+  return Result.ok({
+    output,
+    minify: raw.minify ?? false,
+    target,
+    analyze: raw.analyze ?? false,
+    dryRun: raw.dryRun ?? false,
+    external: raw.external ?? [],
+  } satisfies OptimizeResolvedOptions);
 }
 
 /**
@@ -35,14 +74,18 @@ function resolveOutputPath(entry: string, outputOpt?: string): string {
 /**
  * Get file size safely
  */
-function getFileSize(filePath: string): number {
+function getFileSize(filePath: PathLike): number {
   return Result.try(() => statSync(filePath).size).unwrapOr(0);
 }
 
 /**
  * Run esbuild optimization
  */
-async function runOptimize(entry: string, output: string, opts: OptimizeOptions): Promise<void> {
+async function runOptimize(
+  entry: string,
+  output: string,
+  opts: OptimizeResolvedOptions,
+): Promise<void> {
   const esbuild = await import("esbuild");
 
   const external = [...DEFAULT_EXTERNALS, ...opts.external];
@@ -113,43 +156,29 @@ export function registerOptimizeCommand(program: Command): void {
     .option("--analyze", "Show bundle analysis", false)
     .option("--dry-run", "Show what would be built without building", false)
     .option("-e, --external <package...>", "Additional external packages", [])
-    .action(
-      async (
-        entry?: string,
-        opts: Partial<OptimizeOptions & { output?: string; dryRun?: boolean }> = {},
-      ) => {
-        const resolvedEntry = entry ?? "src/index.ts";
+    .action(async (entry?: string, rawOpts: OptimizeCliOptionsRaw = {}) => {
+      const resolvedEntry = entry ?? "src/index.ts";
 
-        const filePath = exitOnError(resolveEntryPath(resolvedEntry));
+      const filePath = exitOnError(resolveEntryPath(resolvedEntry));
 
-        const target = (opts.target ?? "node") as "bun" | "node" | "browser";
-        if (!["bun", "node", "browser"].includes(target)) {
-          error(`Invalid target: "${target}". Must be one of: bun, node, browser`);
-          process.exit(1);
-          return;
-        }
+      const optionsResult = parseOptimizeOptions(filePath, rawOpts);
+      if (optionsResult.isErr()) {
+        error(optionsResult.error.message);
+        process.exit(1);
+        return;
+      }
+      const options = optionsResult.value;
 
-        const output = resolveOutputPath(filePath, opts.output);
-        const options: OptimizeOptions = {
-          output,
-          minify: opts.minify ?? false,
-          target,
-          analyze: opts.analyze ?? false,
-          dryRun: opts.dryRun ?? false,
-          external: opts.external ?? [],
-        };
-
-        exitOnError(
-          await Result.tryPromise({
-            try: async () => {
-              await runOptimize(filePath, output, options);
-              if (!options.dryRun) {
-                success("Optimization complete");
-              }
-            },
-            catch: (e) => (e instanceof Error ? e : new Error(String(e))),
-          }),
-        );
-      },
-    );
+      exitOnError(
+        await Result.tryPromise({
+          try: async () => {
+            await runOptimize(filePath, options.output, options);
+            if (!options.dryRun) {
+              success("Optimization complete");
+            }
+          },
+          catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+        }),
+      );
+    });
 }

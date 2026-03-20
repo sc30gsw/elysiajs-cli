@@ -1,6 +1,8 @@
 import { type Result } from "better-result";
 import chalk from "chalk";
 
+import type { KnownHttpMethod } from "~/types/http-method.js";
+
 export const symbols = {
   success: chalk.green("✓"),
   error: chalk.red("✗"),
@@ -10,23 +12,23 @@ export const symbols = {
   bullet: chalk.gray("•"),
 } as const satisfies Record<string, string>;
 
-export function success(message: typeof symbols.success): void {
+export function success(message: string): void {
   console.log(`${symbols.success} ${message}`);
 }
 
-export function error(message: typeof symbols.error): void {
+export function error(message: string): void {
   console.error(`${symbols.error} ${message}`);
 }
 
-export function warning(message: typeof symbols.warning): void {
+export function warning(message: string): void {
   console.warn(`${symbols.warning} ${chalk.yellow(message)}`);
 }
 
-export function info(message: typeof symbols.info): void {
+export function info(message: string): void {
   console.log(`${symbols.info} ${chalk.blue(message)}`);
 }
 
-export function dim(message: typeof symbols.bullet): void {
+export function dim(message: string): void {
   console.log(chalk.dim(message));
 }
 
@@ -42,9 +44,9 @@ export function formatMethod(method: string): string {
     DELETE: chalk.red,
     HEAD: chalk.magenta,
     OPTIONS: chalk.gray,
-  } as const satisfies Record<string, (s: string) => string>;
+  } as const satisfies Record<KnownHttpMethod, (s: string) => string>;
 
-  const colorFn = colors[method.toUpperCase() as keyof typeof colors] ?? chalk.white;
+  const colorFn = colors[method.toUpperCase() as KnownHttpMethod] ?? chalk.white;
 
   return colorFn(method.toUpperCase().padEnd(7));
 }

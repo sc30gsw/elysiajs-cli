@@ -1,4 +1,4 @@
-import { existsSync } from "fs";
+import { existsSync, type PathLike } from "fs";
 import { resolve, extname } from "path";
 
 import { Result } from "better-result";
@@ -24,6 +24,8 @@ export interface ElysiaApp {
   }>;
   fetch: (request: Request) => Promise<Response> | Response;
 }
+
+export type ElysiaRoute = ElysiaApp["routes"][number];
 
 /**
  * Check if the given module export is an Elysia app
@@ -55,7 +57,7 @@ export function resolveEntryPath(entry: string): Result<string, Error> {
 /**
  * Transpile TypeScript to JavaScript using esbuild (for Node.js)
  */
-async function transpileWithEsbuild(filePath: string): Promise<string> {
+async function transpileWithEsbuild(filePath: PathLike): Promise<string> {
   const esbuild = await import("esbuild");
   const os = await import("os");
   const path = await import("path");
@@ -67,7 +69,7 @@ async function transpileWithEsbuild(filePath: string): Promise<string> {
   const outFile = path.join(outDir, "app.mjs");
 
   await esbuild.build({
-    entryPoints: [filePath],
+    entryPoints: [String(filePath)],
     outfile: outFile,
     bundle: true,
     format: "esm",

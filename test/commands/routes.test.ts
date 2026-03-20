@@ -21,8 +21,8 @@ describe("extractRoutes", () => {
   });
 
   it("should detect WebSocket routes", () => {
-    // Avoid depending on a real WebSocket adapter (Node/vitest often logs
-    // "Current adapter doesn't support WebSocket"). Assert mapping logic only.
+    //? Avoid depending on a real WebSocket adapter (Node/vitest often logs
+    //? "Current adapter doesn't support WebSocket"). Assert mapping logic only.
     const mockApp = {
       routes: [{ method: "WS", path: "/chat" }],
     } as unknown as ElysiaApp;

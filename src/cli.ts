@@ -10,6 +10,7 @@ import { registerOptimizeCommand } from "~/commands/optimize/index.js";
 import { registerRequestCommand } from "~/commands/request/index.js";
 import { registerSearchCommand } from "~/commands/search/index.js";
 import { registerServeCommand } from "~/commands/serve/index.js";
+import { isPackageJsonWithVersion } from "~/types/package-json.js";
 
 /**
  * Read package version from package.json
@@ -19,8 +20,13 @@ function getVersion(): string {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
     const pkgPath = join(__dirname, "..", "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version: string };
-    return pkg.version;
+    const raw: unknown = JSON.parse(readFileSync(pkgPath, "utf-8"));
+
+    if (!isPackageJsonWithVersion(raw)) {
+      throw new Error("package.json missing string `version`");
+    }
+    
+    return raw.version;
   }).unwrapOr("0.0.0");
 }
 

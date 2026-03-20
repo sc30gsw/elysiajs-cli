@@ -1,7 +1,6 @@
 import { Elysia, type AnyElysia } from "elysia";
 import { describe, it, expect, beforeEach } from "vitest";
 
-// Test the core request functionality by using the Elysia app directly
 describe("request command - core functionality", () => {
   let app: AnyElysia;
 

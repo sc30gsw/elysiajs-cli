@@ -10,7 +10,7 @@ describe("formatMethod", () => {
     const get = formatMethod("GET");
     const plain = stripAnsi(get);
     expect(plain.trim()).toBe("GET");
-    expect(plain.length).toBeGreaterThanOrEqual(7); // padEnd(7)
+    expect(plain.length).toBeGreaterThanOrEqual(7);
   });
 
   it("should handle all common HTTP methods", () => {

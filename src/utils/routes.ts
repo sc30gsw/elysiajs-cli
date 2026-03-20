@@ -1,11 +1,7 @@
 import { formatMethod } from "~/utils/display.js";
-import type { ElysiaApp } from "~/utils/loader.js";
+import type { ElysiaApp, ElysiaRoute } from "~/utils/loader.js";
 
-export interface RouteInfo {
-  method: string;
-  path: string;
-  hasWebSocket: boolean;
-}
+export type RouteInfo = Pick<ElysiaRoute, "method" | "path"> & { hasWebSocket: boolean };
 
 /**
  * Extract route information from an Elysia app

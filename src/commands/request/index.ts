@@ -1,3 +1,6 @@
+import type { PathLike } from "fs";
+import { writeFile } from "fs/promises";
+
 import { Result } from "better-result";
 import chalk from "chalk";
 import type { Command } from "commander";
@@ -5,7 +8,8 @@ import type { Command } from "commander";
 import { formatMethod, formatStatus, elapsed, header, error, info, dim } from "~/utils/display.js";
 import { loadApp } from "~/utils/loader.js";
 
-interface RequestOptions {
+/** Resolved options for `elysia req` */
+export interface RequestResolvedOptions {
   method: string;
   header: string[];
   body: string | undefined;
@@ -13,6 +17,20 @@ interface RequestOptions {
   watch: boolean;
   json: boolean;
   output: string | undefined;
+}
+
+export type RequestCliOptionsRaw = Partial<RequestResolvedOptions>;
+
+function parseRequestOptions(raw: RequestCliOptionsRaw): RequestResolvedOptions {
+  return {
+    method: raw.method ?? "GET",
+    header: raw.header ?? [],
+    body: raw.body ?? undefined,
+    verbose: raw.verbose ?? false,
+    watch: raw.watch ?? false,
+    json: raw.json ?? false,
+    output: raw.output ?? undefined,
+  } satisfies RequestResolvedOptions;
 }
 
 /**
@@ -35,7 +53,7 @@ function parseHeaders(headers: string[]): Result<Headers, Error> {
 /**
  * Build a Request object from parsed headers and options
  */
-function buildRequest(url: string, headers: Headers, opts: RequestOptions): Request {
+function buildRequest(url: string, headers: Headers, opts: RequestResolvedOptions): Request {
   // Set Content-Type for body if not set
   if (opts.body && !headers.has("content-type")) {
     try {
@@ -78,7 +96,7 @@ async function formatBody(response: Response, forceJson: boolean): Promise<strin
 async function executeRequest(
   entry: string,
   urlOrPath: string,
-  opts: RequestOptions,
+  opts: RequestResolvedOptions,
 ): Promise<Result<void, Error>> {
   return Result.gen(async function* () {
     const { app } = yield* Result.await(loadApp(entry));
@@ -138,10 +156,10 @@ async function executeRequest(
     const body = await formatBody(response, opts.json);
 
     if (opts.output) {
-      const { writeFile } = await import("fs/promises");
+      const outPath: PathLike = opts.output;
       yield* Result.await(
         Result.tryPromise({
-          try: () => writeFile(opts.output!, body, "utf-8"),
+          try: () => writeFile(outPath, body, "utf-8"),
           catch: (e) => (e instanceof Error ? e : new Error(String(e))),
         }),
       );
@@ -166,18 +184,10 @@ export function registerRequestCommand(program: Command): void {
     .option("--watch", "Watch for file changes and re-run", false)
     .option("--json", "Force JSON output formatting", false)
     .option("-o, --output <file>", "Write response body to file")
-    .action(async (file?: string, url?: string, opts: Partial<RequestOptions> = {}) => {
+    .action(async (file?: string, url?: string, rawOpts: RequestCliOptionsRaw = {}) => {
       const resolvedFile = file ?? "src/index.ts";
       const resolvedUrl = url ?? "/";
-      const options: RequestOptions = {
-        method: opts.method ?? "GET",
-        header: opts.header ?? [],
-        body: opts.body ?? undefined,
-        verbose: opts.verbose ?? false,
-        watch: opts.watch ?? false,
-        json: opts.json ?? false,
-        output: opts.output ?? undefined,
-      };
+      const options = parseRequestOptions(rawOpts);
 
       const result = await executeRequest(resolvedFile, resolvedUrl, options);
       if (result.isErr()) {

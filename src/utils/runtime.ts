@@ -6,6 +6,8 @@ import { Result } from "better-result";
 
 export type Runtime = "bun" | "node";
 
+export type TsRunner = "bun" | "tsx";
+
 /**
  * Detect if running in Bun environment
  */
@@ -51,7 +53,7 @@ export async function isCommandAvailable(command: string): Promise<boolean> {
 /**
  * Get executable for running TypeScript files
  */
-export function getTsRunner(): string {
+export function getTsRunner(): TsRunner {
   if (isBun()) return "bun";
   return "tsx";
 }

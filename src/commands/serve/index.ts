@@ -7,17 +7,30 @@ import { resolveEntryPath, loadApp } from "~/utils/loader.js";
 import { formatRoutes, extractRoutes } from "~/utils/routes.js";
 import { isBun } from "~/utils/runtime.js";
 
-interface ServeOptions {
+/** Resolved options for `elysia serve` */
+export interface ServeResolvedOptions {
   port: number;
   showRoutes: boolean;
   use: string[];
   external: string[];
 }
 
+export type ServeCliOptionsRaw = Partial<Omit<ServeResolvedOptions, "port">> & { port?: string };
+
+function parseServeOptions(raw: ServeCliOptionsRaw): ServeResolvedOptions {
+  const port = parseInt(raw.port ?? "3000", 10);
+  return {
+    port: Number.isFinite(port) ? port : 3000,
+    showRoutes: raw.showRoutes ?? false,
+    use: raw.use ?? [],
+    external: raw.external ?? [],
+  } satisfies ServeResolvedOptions;
+}
+
 /**
  * Start dev server with Bun's native hot reload
  */
-async function servWithBun(entry: string, opts: ServeOptions): Promise<void> {
+async function servWithBun(entry: string, opts: ServeResolvedOptions): Promise<void> {
   const args = ["bun", "--hot", entry];
 
   if (opts.port) {
@@ -53,7 +66,7 @@ async function servWithBun(entry: string, opts: ServeOptions): Promise<void> {
 /**
  * Start dev server with Node.js (esbuild + chokidar)
  */
-async function serveWithNode(entry: string, opts: ServeOptions): Promise<void> {
+async function serveWithNode(entry: string, opts: ServeResolvedOptions): Promise<void> {
   const { spawn } = await import("child_process");
   const chokidar = await import("chokidar");
   const os = await import("os");
@@ -168,15 +181,9 @@ export function registerServeCommand(program: Command): void {
     .option("--show-routes", "Display registered routes on startup", false)
     .option("--use <middleware...>", "Inject middleware (path to middleware file)", [])
     .option("-e, --external <package...>", "External packages to exclude from bundle", [])
-    .action(async (entry?: string, opts: Partial<ServeOptions & { port: string }> = {}) => {
+    .action(async (entry?: string, rawOpts: ServeCliOptionsRaw = {}) => {
       const resolvedEntry = entry ?? "src/index.ts";
-      const port = parseInt(opts.port ?? "3000", 10);
-      const options: ServeOptions = {
-        port,
-        showRoutes: opts.showRoutes ?? false,
-        use: opts.use ?? [],
-        external: opts.external ?? [],
-      };
+      const options = parseServeOptions(rawOpts);
 
       const filePath = exitOnError(resolveEntryPath(resolvedEntry));
 
@@ -184,7 +191,7 @@ export function registerServeCommand(program: Command): void {
       console.log(chalk.bold(chalk.magenta("  Elysia")) + chalk.dim(" dev server"));
       console.log();
       info(`Entry:  ${filePath}`);
-      info(`Port:   ${port}`);
+      info(`Port:   ${options.port}`);
       console.log();
 
       if (options.showRoutes) {
