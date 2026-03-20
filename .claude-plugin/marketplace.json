@@ -1,5 +1,5 @@
 {
-  "name": "elysia-skill",
+  "name": "elysia-cli",
   "owner": {
     "name": "sc30gsw"
   },
@@ -9,11 +9,11 @@
   },
   "plugins": [
     {
-      "name": "elysia-skill",
+      "name": "elysia-cli",
       "description": "Develop Elysia applications using @sc30gsw/elysiajs-cli: documentation search, API lookup, request testing (app.handle), dev server, and bundle optimization.",
       "source": "./",
       "strict": true,
-      "skills": ["./skills/elysia"]
+      "skills": ["./skills/elysia-cli"]
     }
   ]
 }

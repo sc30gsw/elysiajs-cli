@@ -117,6 +117,6 @@ src/
 
 ## Elysia Agent Skill (Claude plugin / Cursor)
 
-- **Skill file:** [`skills/elysia/SKILL.md`](skills/elysia/SKILL.md) — when to trigger, untrusted-doc rules, `elysia docs` / `elysia search` / `elysia req`, inline API notes, and **official-aligned structure** (MVC-style folders, controller/service/model, `essential/best-practice`).
+- **Skill file:** [`skills/elysia-cli/SKILL.md`](skills/elysia-cli/SKILL.md) — when to trigger, untrusted-doc rules, `elysia docs` / `elysia search` / `elysia req`, inline API notes, and **official-aligned structure** (MVC-style folders, controller/service/model, `essential/best-practice`).
 - **Claude Code:** add marketplace `sc30gsw/elysiajs-cli`, then `/plugin install elysia-skill@elysia` (see [README.md](README.md) § *Claude Code plugin*).
 - **CLI:** this skill expects `@sc30gsw/elysiajs-cli` installed (global or devDependency); command cheat sheet is in **Elysia CLI Commands** above. For architecture and validation patterns, prefer `elysia docs essential/best-practice` and `elysia docs essential/validation` over guessing.

@@ -286,10 +286,10 @@ This repository ships a **Claude Code** plugin (same idea as [hono-skill](https:
 
 ```text
 /plugin marketplace add sc30gsw/elysiajs-cli
-/plugin install elysia-skill@elysia
+/plugin install elysia-cli@elysia-cli
 ```
 
-The skill lives at [`skills/elysia/SKILL.md`](skills/elysia/SKILL.md). Plugin metadata is in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json).
+The skill lives at [`skills/elysia-cli/SKILL.md`](skills/elysia-cli/SKILL.md). Plugin metadata is in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json).
 
 **Requirements:** Install the CLI separately (global or devDependency) so `elysia` is available — this npm package provides the binary; the plugin provides the agent skill.
 
