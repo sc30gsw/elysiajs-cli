@@ -27,5 +27,3 @@ export const githubApiFetcher = up(fetch, () => ({
     return json;
   },
 }));
-
-export type { GitHubGitTreeResponse };

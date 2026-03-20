@@ -6,8 +6,6 @@ import { Result } from "better-result";
 import type { Command } from "commander";
 import type { FuseResult } from "fuse.js";
 
-import { info, header, dim, exitOnError } from "~/utils/display.js";
-import { docsFetcher, githubApiFetcher } from "~/utils/fetcher.js";
 import type { DocsRepoRelativePath } from "~/types/docs-repo-path.js";
 import {
   indexWithBrandedPaths,
@@ -15,6 +13,8 @@ import {
   type DocEntry,
   type SearchIndex,
 } from "~/types/search-index.js";
+import { info, header, dim, exitOnError } from "~/utils/display.js";
+import { docsFetcher, githubApiFetcher } from "~/utils/fetcher.js";
 
 const DOCS_REPO_URL =
   "https://api.github.com/repos/elysiajs/documentation/git/trees/main?recursive=1";

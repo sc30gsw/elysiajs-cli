@@ -25,7 +25,7 @@ function getVersion(): string {
     if (!isPackageJsonWithVersion(raw)) {
       throw new Error("package.json missing string `version`");
     }
-    
+
     return raw.version;
   }).unwrapOr("0.0.0");
 }

@@ -6,14 +6,14 @@ import { Result } from "better-result";
 import type { Command } from "commander";
 import { isResponseError } from "up-fetch";
 
-import { error, info, header, dim, exitOnError } from "~/utils/display.js";
-import { docsFetcher } from "~/utils/fetcher.js";
 import {
   DOC_CATEGORIES,
   TABLE_OF_CONTENTS_PATH,
   normalizeDocsRepoRelativePath,
   type DocsRepoRelativePath,
 } from "~/types/docs-repo-path.js";
+import { info, header, dim, exitOnError } from "~/utils/display.js";
+import { docsFetcher } from "~/utils/fetcher.js";
 
 const CACHE_DIR = join(homedir(), ".cache", "elysia-cli", "docs");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
