@@ -26,7 +26,7 @@
   "main": "./dist/cli.js",
   "scripts": {
     "build": "tsdown",
-    "prepublishOnly": "bun run build",
+    "build:all": "bun run build",
     "dev": "tsdown --watch",
     "oxc:check": "oxlint && oxfmt --check",
     "oxc:fix": "oxlint --fix; oxfmt",
