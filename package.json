@@ -34,12 +34,12 @@
     "oxfmt:fix": "oxfmt",
     "oxlint:check": "oxlint",
     "oxlint:fix": "oxlint --fix",
+    "postinstall": "lefthook install",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
     "test:build": "bun run build && vitest run",
     "test:build:coverage": "bun run build && vitest run --coverage",
-    "postinstall": "lefthook install",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
