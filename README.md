@@ -2,19 +2,19 @@
 
 CLI for humans and AI agents — browse docs, search, test requests, and run your Elysia app.
 
-Works with Bun and Node.js.
+Works with Bun (≥1.0) and Node.js (≥20).
 
 ## Installation
 
 ```bash
 # npm
-npm install -g @elysiajs/cli
+npm install -g @sc30gsw/elysiajs-cli
 
 # pnpm
-pnpm add -g @elysiajs/cli
+pnpm add -g @sc30gsw/elysiajs-cli
 
 # bun
-bun add -g @elysiajs/cli
+bun add -g @sc30gsw/elysiajs-cli
 ```
 
 ## Usage
