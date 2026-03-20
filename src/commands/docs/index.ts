@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "fs
 import { homedir } from "os";
 import { join } from "path";
 
-import type { Command } from "commander";
 import { Result } from "better-result";
+import type { Command } from "commander";
 import { isResponseError } from "up-fetch";
 
 import { error, info, header, dim, exitOnError } from "~/utils/display.js";

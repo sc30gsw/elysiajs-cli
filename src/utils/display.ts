@@ -1,5 +1,5 @@
-import chalk from "chalk";
 import { type Result } from "better-result";
+import chalk from "chalk";
 
 export const symbols = {
   success: chalk.green("✓"),
@@ -45,7 +45,7 @@ export function formatMethod(method: string): string {
   } as const satisfies Record<string, (s: string) => string>;
 
   const colorFn = colors[method.toUpperCase() as keyof typeof colors] ?? chalk.white;
-  
+
   return colorFn(method.toUpperCase().padEnd(7));
 }
 

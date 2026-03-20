@@ -1,6 +1,6 @@
+import { Result } from "better-result";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { Result } from "better-result";
 
 import { header, error, info, dim, exitOnError } from "~/utils/display.js";
 import { resolveEntryPath, loadApp } from "~/utils/loader.js";
@@ -193,8 +193,7 @@ export function registerServeCommand(program: Command): void {
 
       exitOnError(
         await Result.tryPromise({
-          try: () =>
-            isBun() ? servWithBun(filePath, options) : serveWithNode(filePath, options),
+          try: () => (isBun() ? servWithBun(filePath, options) : serveWithNode(filePath, options)),
           catch: (e) => (e instanceof Error ? e : new Error(String(e))),
         }),
       );

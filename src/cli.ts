@@ -2,8 +2,8 @@ import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-import { Command } from "commander";
 import { Result } from "better-result";
+import { Command } from "commander";
 
 import { registerDocsCommand } from "~/commands/docs/index.js";
 import { registerOptimizeCommand } from "~/commands/optimize/index.js";

@@ -1,6 +1,6 @@
+import { Result } from "better-result";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { Result } from "better-result";
 
 import { formatMethod, formatStatus, elapsed, header, error, info, dim } from "~/utils/display.js";
 import { loadApp } from "~/utils/loader.js";
@@ -23,9 +23,7 @@ function parseHeaders(headers: string[]): Result<Headers, Error> {
   for (const h of headers) {
     const colonIdx = h.indexOf(":");
     if (colonIdx === -1) {
-      return Result.err(
-        new Error(`Invalid header format: "${h}". Expected "Name: Value"`),
-      );
+      return Result.err(new Error(`Invalid header format: "${h}". Expected "Name: Value"`));
     }
     const name = h.slice(0, colonIdx).trim();
     const value = h.slice(colonIdx + 1).trim();

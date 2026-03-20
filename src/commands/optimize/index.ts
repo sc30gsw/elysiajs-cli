@@ -1,8 +1,8 @@
 import { statSync } from "fs";
 import { resolve, dirname, basename, extname, join } from "path";
 
-import type { Command } from "commander";
 import { Result } from "better-result";
+import type { Command } from "commander";
 
 import { error, info, success, header, formatSize, exitOnError } from "~/utils/display.js";
 import { resolveEntryPath } from "~/utils/loader.js";

@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "fs
 import { homedir } from "os";
 import { join } from "path";
 
-import type { Command } from "commander";
 import { Result } from "better-result";
+import type { Command } from "commander";
 
 import { error, info, header, dim, exitOnError } from "~/utils/display.js";
 import { docsFetcher, githubApiFetcher } from "~/utils/fetcher.js";
@@ -47,9 +47,7 @@ async function fetchDocFilePaths(): Promise<Result<string[], Error>> {
       return tree.tree
         .filter(
           (item) =>
-            item.type === "blob" &&
-            item.path.startsWith("docs/") &&
-            item.path.endsWith(".md"),
+            item.type === "blob" && item.path.startsWith("docs/") && item.path.endsWith(".md"),
         )
         .map((item) => item.path.replace("docs/", ""));
     },
