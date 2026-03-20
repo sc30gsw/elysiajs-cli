@@ -6,15 +6,30 @@ Works with Bun (≥1.0) and Node.js (≥20).
 
 ## Installation
 
+For regular use, install globally so the `elysia` command is available in your PATH:
+
 ```bash
 # npm
 npm install -g @sc30gsw/elysiajs-cli
 
 # pnpm
 pnpm add -g @sc30gsw/elysiajs-cli
+```
 
-# bun (no persistent global install — use bunx to run directly)
-bunx @sc30gsw/elysiajs-cli
+After installation, run commands directly:
+
+```bash
+elysia docs
+elysia search "websocket"
+```
+
+### Try without installing
+
+Use `bunx` to run the CLI without a global install (the `elysia` command will **not** be added to your PATH):
+
+```bash
+bunx @sc30gsw/elysiajs-cli docs
+bunx @sc30gsw/elysiajs-cli search "websocket"
 ```
 
 ## Usage
