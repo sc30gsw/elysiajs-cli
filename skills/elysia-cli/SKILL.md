@@ -1,5 +1,5 @@
 ---
-name: elysia
+name: elysia-cli
 description: >-
   Use when building Elysia web applications or when the user asks about Elysia APIs, routing, MVC/folder structure, lifecycle hooks, validation/models, plugins, Eden, WebSockets, streaming, or best practices.
   TRIGGER when code imports from 'elysia' or '@elysiajs/*', or the user mentions Elysia.
