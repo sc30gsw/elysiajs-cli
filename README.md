@@ -13,8 +13,8 @@ npm install -g @sc30gsw/elysiajs-cli
 # pnpm
 pnpm add -g @sc30gsw/elysiajs-cli
 
-# bun
-bun add -g @sc30gsw/elysiajs-cli
+# bun (no persistent global install — use bunx to run directly)
+bunx @sc30gsw/elysiajs-cli
 ```
 
 ## Usage
