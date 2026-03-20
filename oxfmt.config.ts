@@ -1,7 +1,11 @@
 import { defineConfig } from "oxfmt";
 
 export default defineConfig({
-  ignorePatterns: [".claude/", "dist/", "node_modules/", "test/dist/"],
+  ignorePatterns: [
+    "dist/",
+    "node_modules/",
+    "test/dist/",
+  ],
   sortImports: {
     partitionByComment: true,
   },
