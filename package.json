@@ -39,6 +39,7 @@
     "test:coverage": "vitest run --coverage",
     "test:build": "bun run build && vitest run",
     "test:build:coverage": "bun run build && vitest run --coverage",
+    "postinstall": "lefthook install",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
