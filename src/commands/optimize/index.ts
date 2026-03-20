@@ -2,8 +2,9 @@ import { statSync } from "fs";
 import { resolve, dirname, basename, extname, join } from "path";
 
 import type { Command } from "commander";
+import { Result } from "better-result";
 
-import { error, info, success, header, formatSize } from "~/utils/display.js";
+import { error, info, success, header, formatSize, exitOnError } from "~/utils/display.js";
 import { resolveEntryPath } from "~/utils/loader.js";
 
 interface OptimizeOptions {
@@ -35,11 +36,7 @@ function resolveOutputPath(entry: string, outputOpt?: string): string {
  * Get file size safely
  */
 function getFileSize(filePath: string): number {
-  try {
-    return statSync(filePath).size;
-  } catch {
-    return 0;
-  }
+  return Result.try(() => statSync(filePath).size).unwrapOr(0);
 }
 
 /**
@@ -123,14 +120,7 @@ export function registerOptimizeCommand(program: Command): void {
       ) => {
         const resolvedEntry = entry ?? "src/index.ts";
 
-        let filePath: string;
-        try {
-          filePath = resolveEntryPath(resolvedEntry);
-        } catch (err) {
-          error(err instanceof Error ? err.message : String(err));
-          process.exit(1);
-          return;
-        }
+        const filePath = exitOnError(resolveEntryPath(resolvedEntry));
 
         const target = (opts.target ?? "node") as "bun" | "node" | "browser";
         if (!["bun", "node", "browser"].includes(target)) {
@@ -149,15 +139,17 @@ export function registerOptimizeCommand(program: Command): void {
           external: opts.external ?? [],
         };
 
-        try {
-          await runOptimize(filePath, output, options);
-          if (!options.dryRun) {
-            success("Optimization complete");
-          }
-        } catch (err) {
-          error(err instanceof Error ? err.message : String(err));
-          process.exit(1);
-        }
+        exitOnError(
+          await Result.tryPromise({
+            try: async () => {
+              await runOptimize(filePath, output, options);
+              if (!options.dryRun) {
+                success("Optimization complete");
+              }
+            },
+            catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+          }),
+        );
       },
     );
 }

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { Result } from "better-result";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const cli = join(root, "dist", "cli.js");
@@ -20,16 +21,14 @@ function run(args: string[], env?: NodeJS.ProcessEnv): string {
 
 async function waitForHttp(url: string, timeoutMs: number): Promise<Response> {
   const deadline = Date.now() + timeoutMs;
-  let last: unknown;
+  let last: { message: string } = new Error("Timeout");
   while (Date.now() < deadline) {
-    try {
-      return await fetch(url);
-    } catch (e) {
-      last = e;
-      await new Promise((r) => setTimeout(r, 250));
-    }
+    const result = await Result.tryPromise(() => fetch(url));
+    if (result.isOk()) return result.value;
+    last = result.error;
+    await new Promise((r) => setTimeout(r, 250));
   }
-  throw last instanceof Error ? last : new Error(String(last));
+  throw new Error(last.message);
 }
 
 describe.sequential("elysia CLI (dist/cli.js)", () => {

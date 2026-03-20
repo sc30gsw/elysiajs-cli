@@ -3,12 +3,13 @@ import { homedir } from "os";
 import { join } from "path";
 
 import type { Command } from "commander";
+import { Result } from "better-result";
 
-import { error, info, header, dim } from "~/utils/display.js";
+import { error, info, header, dim, exitOnError } from "~/utils/display.js";
+import { docsFetcher, githubApiFetcher } from "~/utils/fetcher.js";
 
 const DOCS_REPO_URL =
   "https://api.github.com/repos/elysiajs/documentation/git/trees/main?recursive=1";
-const DOCS_BASE_URL = "https://raw.githubusercontent.com/elysiajs/documentation/main/docs";
 const CACHE_DIR = join(homedir(), ".cache", "elysia-cli", "search");
 const INDEX_FILE = join(CACHE_DIR, "index.json");
 const INDEX_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -37,18 +38,23 @@ function isIndexValid(): boolean {
 /**
  * Fetch all markdown file paths from the documentation repo
  */
-async function fetchDocFilePaths(): Promise<string[]> {
-  const response = await fetch(DOCS_REPO_URL);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch doc tree: ${response.status}`);
-  }
-
-  const tree = (await response.json()) as { tree: Array<{ path: string; type: string }> };
-  return tree.tree
-    .filter(
-      (item) => item.type === "blob" && item.path.startsWith("docs/") && item.path.endsWith(".md"),
-    )
-    .map((item) => item.path.replace("docs/", ""));
+async function fetchDocFilePaths(): Promise<Result<string[], Error>> {
+  return Result.tryPromise({
+    try: async () => {
+      const tree = await githubApiFetcher<{ tree: Array<{ path: string; type: string }> }>(
+        DOCS_REPO_URL,
+      );
+      return tree.tree
+        .filter(
+          (item) =>
+            item.type === "blob" &&
+            item.path.startsWith("docs/") &&
+            item.path.endsWith(".md"),
+        )
+        .map((item) => item.path.replace("docs/", ""));
+    },
+    catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+  });
 }
 
 /**
@@ -117,6 +123,23 @@ function stripMarkdown(content: string): string {
     .trim();
 }
 
+const FALLBACK_PATHS = [
+  "at-a-glance.md",
+  "table-of-content.md",
+  "essential/route.md",
+  "essential/handler.md",
+  "essential/life-cycle.md",
+  "essential/plugin.md",
+  "essential/schema.md",
+  "essential/context.md",
+  "patterns/cookie.md",
+  "patterns/websocket.md",
+  "patterns/macro.md",
+  "plugins/bearer.md",
+  "plugins/cors.md",
+  "plugins/swagger.md",
+];
+
 /**
  * Build the search index from documentation files
  */
@@ -127,28 +150,8 @@ async function buildIndex(
 
   info("Building search index from documentation...");
 
-  let paths: string[];
-  try {
-    paths = await fetchDocFilePaths();
-  } catch {
-    // If we can't fetch the file list, use a predefined set of common docs
-    paths = [
-      "at-a-glance.md",
-      "table-of-content.md",
-      "essential/route.md",
-      "essential/handler.md",
-      "essential/life-cycle.md",
-      "essential/plugin.md",
-      "essential/schema.md",
-      "essential/context.md",
-      "patterns/cookie.md",
-      "patterns/websocket.md",
-      "patterns/macro.md",
-      "plugins/bearer.md",
-      "plugins/cors.md",
-      "plugins/swagger.md",
-    ];
-  }
+  // If we can't fetch the file list, use a predefined set of common docs
+  const paths = (await fetchDocFilePaths()).unwrapOr(FALLBACK_PATHS);
 
   const entries: DocEntry[] = [];
   const total = paths.length;
@@ -159,20 +162,15 @@ async function buildIndex(
 
     onProgress?.(i + 1, total);
 
-    try {
-      const url = `${DOCS_BASE_URL}/${path}`;
-      const response = await fetch(url);
-      if (!response.ok) continue;
+    const fetchResult = await Result.tryPromise(() => docsFetcher(path));
+    if (fetchResult.isErr()) continue;
 
-      const content = await response.text();
-      const title = extractTitle(content, path);
-      const excerpt = extractExcerpt(content);
-      const plainText = stripMarkdown(content);
+    const content = fetchResult.value;
+    const title = extractTitle(content, path);
+    const excerpt = extractExcerpt(content);
+    const plainText = stripMarkdown(content);
 
-      entries.push({ path, title, content: plainText, excerpt });
-    } catch {
-      // Skip failed fetches
-    }
+    entries.push({ path, title, content: plainText, excerpt });
   }
 
   const index: SearchIndex = { entries, createdAt: Date.now() };
@@ -232,42 +230,42 @@ export function registerSearchCommand(program: Command): void {
         const pretty = opts.pretty ?? false;
         const rebuild = opts.rebuild ?? false;
 
-        try {
-          const results = await searchDocs(query, limit, rebuild);
+        const results = exitOnError(
+          await Result.tryPromise({
+            try: () => searchDocs(query, limit, rebuild),
+            catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+          }),
+        );
 
-          if (results.length === 0) {
-            info(`No results found for "${query}"`);
-            return;
-          }
+        if (results.length === 0) {
+          info(`No results found for "${query}"`);
+          return;
+        }
 
-          if (pretty) {
-            console.log();
-            header(`Search Results for "${query}"`);
-            console.log();
+        if (pretty) {
+          console.log();
+          header(`Search Results for "${query}"`);
+          console.log();
 
-            for (let i = 0; i < results.length; i++) {
-              const { item, score } = results[i]!;
-              const relevance = Math.round((1 - (score ?? 0)) * 100);
-              console.log(`  ${i + 1}. ${item.title}`);
-              dim(`     Path: ${item.path}  (${relevance}% match)`);
-              if (item.excerpt) {
-                dim(`     ${item.excerpt}`);
-              }
-              dim(`     Run: elysia docs ${item.path.replace(".md", "")}`);
-              console.log();
+          for (let i = 0; i < results.length; i++) {
+            const { item, score } = results[i]!;
+            const relevance = Math.round((1 - (score ?? 0)) * 100);
+            console.log(`  ${i + 1}. ${item.title}`);
+            dim(`     Path: ${item.path}  (${relevance}% match)`);
+            if (item.excerpt) {
+              dim(`     ${item.excerpt}`);
             }
-          } else {
-            const output = results.map(({ item, score }) => ({
-              path: item.path,
-              title: item.title,
-              excerpt: item.excerpt,
-              score: Math.round((1 - (score ?? 0)) * 100),
-            }));
-            console.log(JSON.stringify(output, null, 2));
+            dim(`     Run: elysia docs ${item.path.replace(".md", "")}`);
+            console.log();
           }
-        } catch (err) {
-          error(err instanceof Error ? err.message : String(err));
-          process.exit(1);
+        } else {
+          const output = results.map(({ item, score }) => ({
+            path: item.path,
+            title: item.title,
+            excerpt: item.excerpt,
+            score: Math.round((1 - (score ?? 0)) * 100),
+          }));
+          console.log(JSON.stringify(output, null, 2));
         }
       },
     );

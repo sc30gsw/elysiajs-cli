@@ -1,8 +1,5 @@
 import chalk from "chalk";
-
-/**
- * Display utilities for terminal output
- */
+import { type Result } from "better-result";
 
 export const symbols = {
   success: chalk.green("✓"),
@@ -11,25 +8,25 @@ export const symbols = {
   info: chalk.blue("ℹ"),
   arrow: chalk.gray("→"),
   bullet: chalk.gray("•"),
-} as const;
+} as const satisfies Record<string, string>;
 
-export function success(message: string): void {
+export function success(message: typeof symbols.success): void {
   console.log(`${symbols.success} ${message}`);
 }
 
-export function error(message: string): void {
-  console.error(`${symbols.error} ${chalk.red(message)}`);
+export function error(message: typeof symbols.error): void {
+  console.error(`${symbols.error} ${message}`);
 }
 
-export function warning(message: string): void {
+export function warning(message: typeof symbols.warning): void {
   console.warn(`${symbols.warning} ${chalk.yellow(message)}`);
 }
 
-export function info(message: string): void {
+export function info(message: typeof symbols.info): void {
   console.log(`${symbols.info} ${chalk.blue(message)}`);
 }
 
-export function dim(message: string): void {
+export function dim(message: typeof symbols.bullet): void {
   console.log(chalk.dim(message));
 }
 
@@ -37,7 +34,7 @@ export function dim(message: string): void {
  * Format HTTP method with color
  */
 export function formatMethod(method: string): string {
-  const colors: Record<string, (s: string) => string> = {
+  const colors = {
     GET: chalk.green,
     POST: chalk.blue,
     PUT: chalk.yellow,
@@ -45,8 +42,10 @@ export function formatMethod(method: string): string {
     DELETE: chalk.red,
     HEAD: chalk.magenta,
     OPTIONS: chalk.gray,
-  };
-  const colorFn = colors[method.toUpperCase()] ?? chalk.white;
+  } as const satisfies Record<string, (s: string) => string>;
+
+  const colorFn = colors[method.toUpperCase() as keyof typeof colors] ?? chalk.white;
+  
   return colorFn(method.toUpperCase().padEnd(7));
 }
 
@@ -108,4 +107,17 @@ export function elapsed(ms: number): string {
  */
 export function banner(): void {
   console.log(chalk.bold(chalk.magenta("\n  Elysia CLI\n")));
+}
+
+/**
+ * Extract value from a Result, or print error and exit with code 1
+ */
+export function exitOnError<T>(result: Result<T, { message: string }>): T {
+  return result.match({
+    ok: (value) => value,
+    err: (e): never => {
+      error(e.message);
+      process.exit(1);
+    },
+  });
 }

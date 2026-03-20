@@ -1,8 +1,9 @@
 import chalk from "chalk";
 import type { Command } from "commander";
+import { Result } from "better-result";
 
-import { header, error, info, dim } from "~/utils/display.js";
-import { resolveEntryPath } from "~/utils/loader.js";
+import { header, error, info, dim, exitOnError } from "~/utils/display.js";
+import { resolveEntryPath, loadApp } from "~/utils/loader.js";
 import { formatRoutes, extractRoutes } from "~/utils/routes.js";
 import { isBun } from "~/utils/runtime.js";
 
@@ -90,10 +91,13 @@ async function serveWithNode(entry: string, opts: ServeOptions): Promise<void> {
       currentProcess = null;
     }
 
-    try {
-      await transpile();
-    } catch (err) {
-      error(`Transpile error: ${err instanceof Error ? err.message : String(err)}`);
+    const transpileResult = await Result.tryPromise({
+      try: () => transpile(),
+      catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+    });
+
+    if (transpileResult.isErr()) {
+      error(`Transpile error: ${transpileResult.error.message}`);
       return;
     }
 
@@ -142,17 +146,18 @@ async function serveWithNode(entry: string, opts: ServeOptions): Promise<void> {
  * Show routes from an Elysia app before serving
  */
 async function showAppRoutes(entry: string): Promise<void> {
-  try {
-    const { loadApp } = await import("../../utils/loader.js");
-    const { app } = await loadApp(entry);
-    const routes = extractRoutes(app);
-
-    header("Routes");
-    console.log(formatRoutes(routes));
-    console.log();
-  } catch (err) {
-    error(`Could not load app to show routes: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const result = await loadApp(entry);
+  result.match({
+    ok: ({ app }) => {
+      const routes = extractRoutes(app);
+      header("Routes");
+      console.log(formatRoutes(routes));
+      console.log();
+    },
+    err: (e) => {
+      error(`Could not load app to show routes: ${e.message}`);
+    },
+  });
 }
 
 export function registerServeCommand(program: Command): void {
@@ -173,14 +178,7 @@ export function registerServeCommand(program: Command): void {
         external: opts.external ?? [],
       };
 
-      let filePath: string;
-      try {
-        filePath = resolveEntryPath(resolvedEntry);
-      } catch (err) {
-        error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-        return;
-      }
+      const filePath = exitOnError(resolveEntryPath(resolvedEntry));
 
       console.log();
       console.log(chalk.bold(chalk.magenta("  Elysia")) + chalk.dim(" dev server"));
@@ -193,15 +191,12 @@ export function registerServeCommand(program: Command): void {
         await showAppRoutes(filePath);
       }
 
-      try {
-        if (isBun()) {
-          await servWithBun(filePath, options);
-        } else {
-          await serveWithNode(filePath, options);
-        }
-      } catch (err) {
-        error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
+      exitOnError(
+        await Result.tryPromise({
+          try: () =>
+            isBun() ? servWithBun(filePath, options) : serveWithNode(filePath, options),
+          catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+        }),
+      );
     });
 }

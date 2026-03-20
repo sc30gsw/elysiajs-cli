@@ -1,6 +1,8 @@
 import { existsSync } from "fs";
 import { resolve, extname } from "path";
 
+import { Result } from "better-result";
+
 import { isBun } from "~/utils/runtime.js";
 
 export interface LoadedApp {
@@ -35,19 +37,19 @@ function isElysiaApp(value: unknown): value is ElysiaApp {
 /**
  * Resolve the entry file path
  */
-export function resolveEntryPath(entry: string): string {
+export function resolveEntryPath(entry: string): Result<string, Error> {
   const abs = resolve(process.cwd(), entry);
 
-  if (existsSync(abs)) return abs;
+  if (existsSync(abs)) return Result.ok(abs);
 
   // Try common extensions
   const extensions = [".ts", ".tsx", ".js", ".mjs"];
   for (const ext of extensions) {
     const withExt = abs + ext;
-    if (existsSync(withExt)) return withExt;
+    if (existsSync(withExt)) return Result.ok(withExt);
   }
 
-  throw new Error(`Entry file not found: ${entry}`);
+  return Result.err(new Error(`Entry file not found: ${entry}`));
 }
 
 /**
@@ -84,32 +86,46 @@ async function transpileWithEsbuild(filePath: string): Promise<string> {
 /**
  * Dynamically load an Elysia app from a file
  */
-export async function loadApp(entry: string): Promise<LoadedApp> {
-  const filePath = resolveEntryPath(entry);
-  const ext = extname(filePath);
+export async function loadApp(entry: string): Promise<Result<LoadedApp, Error>> {
+  return Result.gen(async function* () {
+    const filePath = yield* resolveEntryPath(entry);
+    const ext = extname(filePath);
 
-  let modulePath = filePath;
+    let modulePath = filePath;
 
-  // For Node.js, transpile TypeScript first
-  if (!isBun() && (ext === ".ts" || ext === ".tsx")) {
-    modulePath = await transpileWithEsbuild(filePath);
-  }
+    // For Node.js, transpile TypeScript first
+    if (!isBun() && (ext === ".ts" || ext === ".tsx")) {
+      modulePath = yield* Result.await(
+        Result.tryPromise({
+          try: () => transpileWithEsbuild(filePath),
+          catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+        }),
+      );
+    }
 
-  // Dynamic import with cache-busting for watch mode
-  const moduleUrl = `${pathToFileUrl(modulePath)}?t=${Date.now()}`;
-  const module = await import(moduleUrl);
-
-  // Try default export first, then named 'app' export
-  const app = module.default ?? module.app;
-
-  if (!isElysiaApp(app)) {
-    throw new Error(
-      `No valid Elysia app found in "${entry}". ` +
-        'Make sure to export your Elysia instance as the default export or as "app".',
+    // Dynamic import with cache-busting for watch mode
+    const moduleUrl = `${pathToFileUrl(modulePath)}?t=${Date.now()}`;
+    const module_ = yield* Result.await(
+      Result.tryPromise({
+        try: () => import(moduleUrl),
+        catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+      }),
     );
-  }
 
-  return { app, filePath };
+    // Try default export first, then named 'app' export
+    const app = module_.default ?? module_.app;
+
+    if (!isElysiaApp(app)) {
+      return Result.err(
+        new Error(
+          `No valid Elysia app found in "${entry}". ` +
+            'Make sure to export your Elysia instance as the default export or as "app".',
+        ),
+      );
+    }
+
+    return Result.ok({ app, filePath });
+  });
 }
 
 /**

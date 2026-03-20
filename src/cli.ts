@@ -3,6 +3,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 import { Command } from "commander";
+import { Result } from "better-result";
 
 import { registerDocsCommand } from "~/commands/docs/index.js";
 import { registerOptimizeCommand } from "~/commands/optimize/index.js";
@@ -14,15 +15,13 @@ import { registerServeCommand } from "~/commands/serve/index.js";
  * Read package version from package.json
  */
 function getVersion(): string {
-  try {
+  return Result.try(() => {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
     const pkgPath = join(__dirname, "..", "package.json");
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version: string };
     return pkg.version;
-  } catch {
-    return "0.0.0";
-  }
+  }).unwrapOr("0.0.0");
 }
 
 const program = new Command();

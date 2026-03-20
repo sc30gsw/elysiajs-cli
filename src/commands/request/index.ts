@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import type { Command } from "commander";
+import { Result } from "better-result";
 
 import { formatMethod, formatStatus, elapsed, header, error, info, dim } from "~/utils/display.js";
 import { loadApp } from "~/utils/loader.js";
@@ -17,26 +18,26 @@ interface RequestOptions {
 /**
  * Parse header strings into Headers object
  */
-function parseHeaders(headers: string[]): Headers {
+function parseHeaders(headers: string[]): Result<Headers, Error> {
   const result = new Headers();
   for (const h of headers) {
     const colonIdx = h.indexOf(":");
     if (colonIdx === -1) {
-      throw new Error(`Invalid header format: "${h}". Expected "Name: Value"`);
+      return Result.err(
+        new Error(`Invalid header format: "${h}". Expected "Name: Value"`),
+      );
     }
     const name = h.slice(0, colonIdx).trim();
     const value = h.slice(colonIdx + 1).trim();
     result.set(name, value);
   }
-  return result;
+  return Result.ok(result);
 }
 
 /**
- * Build a Request object from CLI options
+ * Build a Request object from parsed headers and options
  */
-function buildRequest(url: string, opts: RequestOptions): Request {
-  const headers = parseHeaders(opts.header);
-
+function buildRequest(url: string, headers: Headers, opts: RequestOptions): Request {
   // Set Content-Type for body if not set
   if (opts.body && !headers.has("content-type")) {
     try {
@@ -80,67 +81,79 @@ async function executeRequest(
   entry: string,
   urlOrPath: string,
   opts: RequestOptions,
-): Promise<void> {
-  const { app } = await loadApp(entry);
+): Promise<Result<void, Error>> {
+  return Result.gen(async function* () {
+    const { app } = yield* Result.await(loadApp(entry));
+    const headers = yield* parseHeaders(opts.header);
 
-  // Build the URL - if path is given without host, use localhost
-  const url = urlOrPath.startsWith("http")
-    ? urlOrPath
-    : `http://localhost${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;
+    // Build the URL - if path is given without host, use localhost
+    const url = urlOrPath.startsWith("http")
+      ? urlOrPath
+      : `http://localhost${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;
 
-  const request = buildRequest(url, opts);
+    const request = buildRequest(url, headers, opts);
 
-  if (opts.verbose) {
-    header("Request");
-    console.log(`  ${formatMethod(opts.method)}  ${url}`);
+    if (opts.verbose) {
+      header("Request");
+      console.log(`  ${formatMethod(opts.method)}  ${url}`);
 
-    const headers = parseHeaders(opts.header);
-    if (headers.entries) {
       for (const [name, value] of headers.entries()) {
         dim(`  ${name}: ${value}`);
       }
-    }
 
-    if (opts.body) {
-      console.log();
-      info("Body:");
-      try {
-        console.log(JSON.stringify(JSON.parse(opts.body), null, 2));
-      } catch {
-        console.log(opts.body);
+      if (opts.body) {
+        console.log();
+        info("Body:");
+        try {
+          console.log(JSON.stringify(JSON.parse(opts.body), null, 2));
+        } catch {
+          console.log(opts.body);
+        }
       }
+      console.log();
     }
-    console.log();
-  }
 
-  const start = Date.now();
-  const response = await app.handle(request);
-  const ms = Date.now() - start;
+    const start = Date.now();
+    const response = yield* Result.await(
+      Result.tryPromise({
+        try: () => app.handle(request),
+        catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+      }),
+    );
+    const ms = Date.now() - start;
 
-  const status = formatStatus(response.status);
-  const time = chalk.dim(`${elapsed(ms)}`);
+    const status = formatStatus(response.status);
+    const time = chalk.dim(`${elapsed(ms)}`);
 
-  if (opts.verbose) {
-    header("Response");
-    console.log(`  ${status} ${response.statusText}  ${time}`);
+    if (opts.verbose) {
+      header("Response");
+      console.log(`  ${status} ${response.statusText}  ${time}`);
 
-    for (const [name, value] of response.headers.entries()) {
-      dim(`  ${name}: ${value}`);
+      for (const [name, value] of response.headers.entries()) {
+        dim(`  ${name}: ${value}`);
+      }
+      console.log();
+    } else {
+      console.log(`${status} ${time}`);
     }
-    console.log();
-  } else {
-    console.log(`${status} ${time}`);
-  }
 
-  const body = await formatBody(response, opts.json);
+    const body = await formatBody(response, opts.json);
 
-  if (opts.output) {
-    const { writeFile } = await import("fs/promises");
-    await writeFile(opts.output, body, "utf-8");
-    info(`Response written to: ${opts.output}`);
-  } else {
-    console.log(body);
-  }
+    if (opts.output) {
+      const { writeFile } = await import("fs/promises");
+      yield* Result.await(
+        Result.tryPromise({
+          try: () => writeFile(opts.output!, body, "utf-8"),
+          catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+        }),
+      );
+      info(`Response written to: ${opts.output}`);
+    } else {
+      console.log(body);
+    }
+
+    return Result.ok();
+  });
 }
 
 export function registerRequestCommand(program: Command): void {
@@ -168,28 +181,26 @@ export function registerRequestCommand(program: Command): void {
         output: opts.output ?? undefined,
       };
 
-      try {
-        await executeRequest(resolvedFile, resolvedUrl, options);
-
-        if (options.watch) {
-          const chokidar = await import("chokidar");
-          const watcher = chokidar.watch(resolvedFile, { ignoreInitial: true });
-
-          info(`Watching ${resolvedFile} for changes...`);
-
-          watcher.on("change", async () => {
-            console.log();
-            info("File changed, re-running request...");
-            try {
-              await executeRequest(resolvedFile, resolvedUrl, options);
-            } catch (err) {
-              error(err instanceof Error ? err.message : String(err));
-            }
-          });
-        }
-      } catch (err) {
-        error(err instanceof Error ? err.message : String(err));
+      const result = await executeRequest(resolvedFile, resolvedUrl, options);
+      if (result.isErr()) {
+        error(result.error.message);
         process.exit(1);
+      }
+
+      if (options.watch) {
+        const chokidar = await import("chokidar");
+        const watcher = chokidar.watch(resolvedFile, { ignoreInitial: true });
+
+        info(`Watching ${resolvedFile} for changes...`);
+
+        watcher.on("change", async () => {
+          console.log();
+          info("File changed, re-running request...");
+          const r = await executeRequest(resolvedFile, resolvedUrl, options);
+          if (r.isErr()) {
+            error(r.error.message);
+          }
+        });
       }
     });
 }

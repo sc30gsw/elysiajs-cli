@@ -3,10 +3,12 @@ import { homedir } from "os";
 import { join } from "path";
 
 import type { Command } from "commander";
+import { Result } from "better-result";
+import { isResponseError } from "up-fetch";
 
-import { error, info, header, dim } from "~/utils/display.js";
+import { error, info, header, dim, exitOnError } from "~/utils/display.js";
+import { docsFetcher } from "~/utils/fetcher.js";
 
-const DOCS_BASE_URL = "https://raw.githubusercontent.com/elysiajs/documentation/main/docs";
 const CACHE_DIR = join(homedir(), ".cache", "elysia-cli", "docs");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -64,33 +66,36 @@ function writeCache(cachePath: string, content: string): void {
 /**
  * Fetch a markdown file from the documentation repository
  */
-async function fetchDoc(docPath: string): Promise<string> {
+async function fetchDoc(docPath: string): Promise<Result<string, Error>> {
   // Normalize path - add .md extension if missing
   const normalizedPath = docPath.endsWith(".md") ? docPath : `${docPath}.md`;
-  const url = `${DOCS_BASE_URL}/${normalizedPath}`;
   const cachePath = getCachePath(normalizedPath);
 
   if (isCacheValid(cachePath)) {
     dim("(from cache)");
-    return readCache(cachePath);
+    return Result.ok(readCache(cachePath));
   }
 
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(
-        `Documentation not found: "${docPath}"\n\n` +
-          `Available categories: ${DOC_CATEGORIES.join(", ")}\n` +
-          `Example: elysia docs essential/route`,
-      );
-    }
-    throw new Error(`Failed to fetch documentation: ${response.status} ${response.statusText}`);
-  }
-
-  const content = await response.text();
-  writeCache(cachePath, content);
-  return content;
+  return Result.tryPromise({
+    try: async () => {
+      const content = await docsFetcher(normalizedPath);
+      writeCache(cachePath, content);
+      return content;
+    },
+    catch: (e) => {
+      if (isResponseError(e) && e.status === 404) {
+        return new Error(
+          `Documentation not found: "${docPath}"\n\n` +
+            `Available categories: ${DOC_CATEGORIES.join(", ")}\n` +
+            `Example: elysia docs essential/route`,
+        );
+      }
+      if (isResponseError(e)) {
+        return new Error(`Failed to fetch documentation: ${e.status} ${e.message}`);
+      }
+      return e instanceof Error ? e : new Error(String(e));
+    },
+  });
 }
 
 /** Render markdown in the terminal via marked-terminal's marked v9+ extension. */
@@ -107,24 +112,27 @@ async function renderMarkdown(content: string): Promise<void> {
  * Display the table of contents
  */
 async function showTableOfContents(): Promise<void> {
-  try {
-    const content = await fetchDoc(TABLE_OF_CONTENTS_PATH);
-    await renderMarkdown(content);
-  } catch {
-    // If table of contents doesn't exist, show a helpful message
-    header("Elysia Documentation");
-    console.log();
-    info("Available documentation categories:");
-    console.log();
-    for (const category of DOC_CATEGORIES) {
-      console.log(`  elysia docs ${category}/<page>`);
-    }
-    console.log();
-    console.log("Examples:");
-    console.log("  elysia docs essential/route");
-    console.log("  elysia docs essential/handler");
-    console.log("  elysia docs plugins/bearer");
-  }
+  const result = await fetchDoc(TABLE_OF_CONTENTS_PATH);
+  await result.match({
+    ok: async (content) => {
+      await renderMarkdown(content);
+    },
+    err: async () => {
+      // If table of contents doesn't exist, show a helpful message
+      header("Elysia Documentation");
+      console.log();
+      info("Available documentation categories:");
+      console.log();
+      for (const category of DOC_CATEGORIES) {
+        console.log(`  elysia docs ${category}/<page>`);
+      }
+      console.log();
+      console.log("Examples:");
+      console.log("  elysia docs essential/route");
+      console.log("  elysia docs essential/handler");
+      console.log("  elysia docs plugins/bearer");
+    },
+  });
 }
 
 export function registerDocsCommand(program: Command): void {
@@ -145,17 +153,12 @@ export function registerDocsCommand(program: Command): void {
         }
       }
 
-      try {
-        if (!docPath) {
-          await showTableOfContents();
-          return;
-        }
-
-        const content = await fetchDoc(docPath);
-        await renderMarkdown(content);
-      } catch (err) {
-        error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
+      if (!docPath) {
+        await showTableOfContents();
+        return;
       }
+
+      const content = exitOnError(await fetchDoc(docPath));
+      await renderMarkdown(content);
     });
 }

@@ -1,3 +1,5 @@
+import { Result } from "better-result";
+
 /**
  * Runtime detection utilities for Bun/Node.js
  */
@@ -32,21 +34,18 @@ export function getRuntimeVersion(): string {
  * Check if a command is available in PATH
  */
 export async function isCommandAvailable(command: string): Promise<boolean> {
-  try {
-    if (isBun()) {
-      const result = await Bun.spawn(["which", command], {
-        stdout: "pipe",
-        stderr: "pipe",
-      }).exited;
-      return result === 0;
-    }
-
-    const { execSync } = await import("child_process");
-    execSync(`which ${command}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
+  if (isBun()) {
+    const result = await Bun.spawn(["which", command], {
+      stdout: "pipe",
+      stderr: "pipe",
+    }).exited;
+    return result === 0;
   }
+
+  const { execSync } = await import("child_process");
+  return Result.try(() => {
+    execSync(`which ${command}`, { stdio: "ignore" });
+  }).isOk();
 }
 
 /**
