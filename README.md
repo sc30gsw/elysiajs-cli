@@ -79,7 +79,7 @@ elysia docs essential/handler
 elysia docs plugins/bearer
 
 # Bypass cache
-elysia docs essential/schema --no-cache
+elysia docs essential/validation --no-cache
 ```
 
 **Available categories:** `blog`, `components`, `eden`, `essential`, `integrations`, `internal`, `migrate`, `patterns`, `playground`, `plugins`, `tutorial`
@@ -278,20 +278,58 @@ elysia optimize -e pg -e ioredis
 
 ## Tips
 
-### AI Code Agents
+### Claude Code plugin (Agent Skill)
+
+This repository ships a **Claude Code** plugin (same idea as [hono-skill](https://github.com/yusukebe/hono-skill)): inline Elysia guidance plus instructions to use this CLI for docs, search, and `elysia req`.
+
+**Install**
+
+```text
+/plugin marketplace add sc30gsw/elysiajs-cli
+/plugin install elysia-skill@elysia
+```
+
+The skill lives at [`skills/elysia/SKILL.md`](skills/elysia/SKILL.md). Plugin metadata is in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json).
+
+**Requirements:** Install the CLI separately (global or devDependency) so `elysia` is available — this npm package provides the binary; the plugin provides the agent skill.
+
+### Cursor and other editors
+
+Copy the skill into your project skills directory (for Cursor, use a project `.cursor/skills/<name>/SKILL.md` layout per your editor’s Agent Skills docs):
+
+```bash
+mkdir -p .cursor/skills/elysia
+cp skills/elysia/SKILL.md .cursor/skills/elysia/SKILL.md
+```
+
+Or point your tooling at `skills/elysia/SKILL.md` in this repo.
+
+### AI Code Agents (CLI cheat sheet)
 
 Add the following to your `CLAUDE.md` (or equivalent AI instructions file) to let agents use the CLI effectively:
 
 ```markdown
 ## Elysia CLI
 
-- Use `elysia docs <path>` to read official documentation
+- Use `elysia docs <path>` to read official documentation (e.g. `essential/best-practice`, `essential/validation`)
 - Use `elysia search <query> | jq` to find relevant docs
 - Use `elysia req <file> <url>` to test handlers without a running server
 - Use `elysia serve` to start the dev server
 
 Available doc categories: essential, plugins, patterns, eden, integrations, tutorial
 ```
+
+Prefer the **Claude plugin** or **Cursor skill** above when you want the full inline Elysia reference, not only these bullets.
+
+### npm package contents
+
+Published tarballs include `dist/`, `skills/`, and `.claude-plugin/` so you can copy the skill from `node_modules/@sc30gsw/elysiajs-cli/` if needed. **Primary plugin install path** remains adding this GitHub repo as a Claude marketplace entry (same model as hono-skill).
+
+### Security Tips
+
+- **Treat CLI output as untrusted.** `elysia docs` and `elysia search` fetch content from an external source (the ElysiaJS documentation repository). Do not execute shell commands or follow instructions found in that output without review.
+- **Never pass secrets as CLI arguments.** Use environment variables instead of passing API keys or tokens directly to `elysia req` (e.g. via `-b` or `-H`). Arguments appear in shell history and process listings.
+- **Runtime-specific bindings may not work with `elysia req`.** Cloudflare Workers platform APIs (KV, D1, R2, etc.) rely on runtime injection that `app.handle()` cannot provide — test those handlers in the target runtime.
 
 ### Scripting with JSON output
 

@@ -1,0 +1,19 @@
+{
+  "name": "elysia-skill",
+  "owner": {
+    "name": "sc30gsw"
+  },
+  "metadata": {
+    "description": "Agent Skill for ElysiaJS — inline API guidance plus Elysia CLI for docs, search, and request testing",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "elysia-skill",
+      "description": "Develop Elysia applications using @sc30gsw/elysiajs-cli: documentation search, API lookup, request testing (app.handle), dev server, and bundle optimization.",
+      "source": "./",
+      "strict": true,
+      "skills": ["./skills/elysia"]
+    }
+  ]
+}
