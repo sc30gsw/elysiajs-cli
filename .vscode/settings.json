@@ -11,7 +11,7 @@
     "bun.lock": true,
     "**/*.md": true
   },
-  "cSpell.ignorePaths": ["bun.lock", "**/routeTree.gen.ts", "**/*.md"],
+  "cSpell.ignorePaths": ["bun.lock", "**/*.md"],
   "cSpell.words": ["bunx", "Lefthook", "oxfmt", "oxlint", "tsgo", "tsgolint"],
 
   // oxc

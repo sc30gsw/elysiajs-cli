@@ -1,22 +1,61 @@
+import { Result } from "better-result";
 import chalk from "chalk";
 import type { Command } from "commander";
 
-import { header, error, info, dim } from "~/utils/display.js";
-import { resolveEntryPath } from "~/utils/loader.js";
+import { header, error, info, dim, exitOnError } from "~/utils/display.js";
+import { resolveEntryPath, loadApp } from "~/utils/loader.js";
 import { formatRoutes, extractRoutes } from "~/utils/routes.js";
 import { isBun } from "~/utils/runtime.js";
 
-interface ServeOptions {
+interface ServeResolvedOptions {
   port: number;
   showRoutes: boolean;
   use: string[];
   external: string[];
 }
 
+type ServeCliOptionsRaw = Partial<Omit<ServeResolvedOptions, "port">> &
+  Partial<Record<"port", string>>;
+
+/**
+ * Normalize raw Commander options into concrete values for the dev server.
+ * @param raw - Partial CLI options (port may be a string from the parser)
+ * @returns Resolved port, route display flag, and bundle externals
+ */
+function parseServeOptions(raw: ServeCliOptionsRaw) {
+  const port = parseInt(raw.port ?? "3000", 10);
+
+  return {
+    port: Number.isFinite(port) ? port : 3000,
+    showRoutes: raw.showRoutes ?? false,
+    use: raw.use ?? [],
+    external: raw.external ?? [],
+  } as const satisfies ServeResolvedOptions;
+}
+
+/**
+ * Run `cleanup` once on SIGINT/SIGTERM, then exit with code 0.
+ * Ignores duplicate signals while shutdown is in progress.
+ * @param cleanup - Async-safe teardown (e.g. kill child process, close watcher)
+ */
+function registerProcessExitHandlers(cleanup: () => void | Promise<void>) {
+  let shuttingDown = false;
+  const onSignal = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    void Promise.resolve(cleanup()).finally(() => process.exit(0));
+  };
+
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+}
+
 /**
  * Start dev server with Bun's native hot reload
+ * @param entry - Entry file path for the Elysia app
+ * @param opts - Resolved serve options (port, etc.)
  */
-async function servWithBun(entry: string, opts: ServeOptions): Promise<void> {
+async function servWithBun(entry: string, opts: ServeResolvedOptions) {
   const args = ["bun", "--hot", entry];
 
   if (opts.port) {
@@ -25,7 +64,6 @@ async function servWithBun(entry: string, opts: ServeOptions): Promise<void> {
 
   info(`Starting with Bun hot reload...`);
   dim(`  ${args.join(" ")}`);
-  console.log();
 
   const proc = Bun.spawn(args, {
     stdout: "inherit",
@@ -36,14 +74,8 @@ async function servWithBun(entry: string, opts: ServeOptions): Promise<void> {
     },
   });
 
-  // Handle SIGINT/SIGTERM for clean shutdown
-  process.on("SIGINT", () => {
+  registerProcessExitHandlers(() => {
     proc.kill();
-    process.exit(0);
-  });
-  process.on("SIGTERM", () => {
-    proc.kill();
-    process.exit(0);
   });
 
   await proc.exited;
@@ -51,8 +83,10 @@ async function servWithBun(entry: string, opts: ServeOptions): Promise<void> {
 
 /**
  * Start dev server with Node.js (esbuild + chokidar)
+ * @param entry - Entry file path for the Elysia app
+ * @param opts - Resolved serve options (port, external packages, etc.)
  */
-async function serveWithNode(entry: string, opts: ServeOptions): Promise<void> {
+async function serveWithNode(entry: string, opts: ServeResolvedOptions) {
   const { spawn } = await import("child_process");
   const chokidar = await import("chokidar");
   const os = await import("os");
@@ -66,11 +100,11 @@ async function serveWithNode(entry: string, opts: ServeOptions): Promise<void> {
 
   info("Starting with Node.js watch mode...");
   dim(`  Entry: ${entry}`);
-  console.log();
 
   let currentProcess: ReturnType<typeof spawn> | null = null;
 
-  async function transpile(): Promise<void> {
+  /** Bundle the Elysia entry into a temporary ESM file for Node. */
+  async function transpile() {
     await esbuild.build({
       entryPoints: [entry],
       outfile: outFile,
@@ -84,16 +118,20 @@ async function serveWithNode(entry: string, opts: ServeOptions): Promise<void> {
     });
   }
 
-  async function start(): Promise<void> {
+  /** Re-transpile if needed and spawn (or respawn) the Node child process. */
+  async function start() {
     if (currentProcess) {
       currentProcess.kill();
       currentProcess = null;
     }
 
-    try {
-      await transpile();
-    } catch (err) {
-      error(`Transpile error: ${err instanceof Error ? err.message : String(err)}`);
+    const transpileResult = await Result.tryPromise({
+      try: () => transpile(),
+      catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+    });
+
+    if (transpileResult.isErr()) {
+      error(`Transpile error: ${transpileResult.error.message}`);
       return;
     }
 
@@ -122,40 +160,37 @@ async function serveWithNode(entry: string, opts: ServeOptions): Promise<void> {
     await start();
   });
 
-  // Handle SIGINT/SIGTERM for clean shutdown
-  process.on("SIGINT", async () => {
+  registerProcessExitHandlers(async () => {
     await watcher.close();
     if (currentProcess) currentProcess.kill();
-    process.exit(0);
-  });
-  process.on("SIGTERM", async () => {
-    await watcher.close();
-    if (currentProcess) currentProcess.kill();
-    process.exit(0);
   });
 
-  // Keep the process alive
   await new Promise(() => {});
 }
 
 /**
  * Show routes from an Elysia app before serving
+ * @param entry - Entry file path for the Elysia app
  */
-async function showAppRoutes(entry: string): Promise<void> {
-  try {
-    const { loadApp } = await import("../../utils/loader.js");
-    const { app } = await loadApp(entry);
-    const routes = extractRoutes(app);
-
-    header("Routes");
-    console.log(formatRoutes(routes));
-    console.log();
-  } catch (err) {
-    error(`Could not load app to show routes: ${err instanceof Error ? err.message : String(err)}`);
-  }
+async function showAppRoutes(entry: string) {
+  const result = await loadApp(entry);
+  result.match({
+    ok: ({ app }) => {
+      const routes = extractRoutes(app);
+      header("Routes");
+      console.log(formatRoutes(routes));
+    },
+    err: (e) => {
+      error(`Could not load app to show routes: ${e.message}`);
+    },
+  });
 }
 
-export function registerServeCommand(program: Command): void {
+/**
+ * Register the `elysia serve` command on the given Commander program.
+ * @param program - Root or parent Commander instance
+ */
+export function registerServeCommand(program: Command) {
   program
     .command("serve [entry]")
     .description("Start a development server with hot reload")
@@ -163,45 +198,25 @@ export function registerServeCommand(program: Command): void {
     .option("--show-routes", "Display registered routes on startup", false)
     .option("--use <middleware...>", "Inject middleware (path to middleware file)", [])
     .option("-e, --external <package...>", "External packages to exclude from bundle", [])
-    .action(async (entry?: string, opts: Partial<ServeOptions & { port: string }> = {}) => {
+    .action(async (entry?: string, rawOpts: ServeCliOptionsRaw = {}) => {
       const resolvedEntry = entry ?? "src/index.ts";
-      const port = parseInt(opts.port ?? "3000", 10);
-      const options: ServeOptions = {
-        port,
-        showRoutes: opts.showRoutes ?? false,
-        use: opts.use ?? [],
-        external: opts.external ?? [],
-      };
+      const options = parseServeOptions(rawOpts);
 
-      let filePath: string;
-      try {
-        filePath = resolveEntryPath(resolvedEntry);
-      } catch (err) {
-        error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-        return;
-      }
+      const filePath = exitOnError(resolveEntryPath(resolvedEntry));
 
-      console.log();
       console.log(chalk.bold(chalk.magenta("  Elysia")) + chalk.dim(" dev server"));
-      console.log();
       info(`Entry:  ${filePath}`);
-      info(`Port:   ${port}`);
-      console.log();
+      info(`Port:   ${options.port}`);
 
       if (options.showRoutes) {
         await showAppRoutes(filePath);
       }
 
-      try {
-        if (isBun()) {
-          await servWithBun(filePath, options);
-        } else {
-          await serveWithNode(filePath, options);
-        }
-      } catch (err) {
-        error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
+      exitOnError(
+        await Result.tryPromise({
+          try: () => (isBun() ? servWithBun(filePath, options) : serveWithNode(filePath, options)),
+          catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+        }),
+      );
     });
 }

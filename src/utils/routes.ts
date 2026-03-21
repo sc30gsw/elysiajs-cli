@@ -1,16 +1,16 @@
-import { formatMethod } from "~/utils/display.js";
-import type { ElysiaApp } from "~/utils/loader.js";
+import { pipe, prop, sortBy } from "remeda";
 
-export interface RouteInfo {
-  method: string;
-  path: string;
-  hasWebSocket: boolean;
-}
+import { formatMethod } from "~/utils/display.js";
+import type { ElysiaApp, ElysiaRoute } from "~/utils/loader.js";
+
+type RouteInfo = Pick<ElysiaRoute, "method" | "path"> & Record<"hasWebSocket", boolean>;
 
 /**
  * Extract route information from an Elysia app
+ * @param app - The Elysia app instance
+ * @returns Array of route info objects with method, path, and WebSocket flag
  */
-export function extractRoutes(app: ElysiaApp): RouteInfo[] {
+export function extractRoutes(app: ElysiaApp) {
   return app.routes.map((route) => ({
     method: route.method,
     path: route.path,
@@ -20,20 +20,16 @@ export function extractRoutes(app: ElysiaApp): RouteInfo[] {
 
 /**
  * Format routes for terminal display
+ * @param routes - Array of route info to format
+ * @returns Multi-line string with ANSI-colored route table, sorted by path
  */
-export function formatRoutes(routes: RouteInfo[]): string {
+export function formatRoutes(routes: RouteInfo[]) {
   if (routes.length === 0) {
     return "  No routes registered";
   }
 
   const lines: string[] = [];
-
-  // Group by path prefix for better readability
-  const sorted = [...routes].sort((a, b) => {
-    if (a.path < b.path) return -1;
-    if (a.path > b.path) return 1;
-    return a.method.localeCompare(b.method);
-  });
+  const sorted = pipe(routes, sortBy(prop("path"), prop("method")));
 
   for (const route of sorted) {
     const method = formatMethod(route.method);
@@ -42,19 +38,4 @@ export function formatRoutes(routes: RouteInfo[]): string {
   }
 
   return lines.join("\n");
-}
-
-/**
- * Format routes as JSON
- */
-export function routesToJson(routes: RouteInfo[]): string {
-  return JSON.stringify(
-    routes.map(({ method, path, hasWebSocket }) => ({
-      method,
-      path,
-      ...(hasWebSocket ? { websocket: true } : {}),
-    })),
-    null,
-    2,
-  );
 }

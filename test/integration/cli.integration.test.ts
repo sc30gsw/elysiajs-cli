@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { Result } from "better-result";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const cli = join(root, "dist", "cli.js");
 
-function run(args: string[], env?: NodeJS.ProcessEnv): string {
+function run(args: string[], env?: NodeJS.ProcessEnv) {
   return execFileSync(process.execPath, [cli, ...args], {
     encoding: "utf-8",
     cwd: root,
@@ -18,18 +19,22 @@ function run(args: string[], env?: NodeJS.ProcessEnv): string {
   });
 }
 
-async function waitForHttp(url: string, timeoutMs: number): Promise<Response> {
+async function waitForHttp(url: string, timeoutMs: number) {
   const deadline = Date.now() + timeoutMs;
-  let last: unknown;
+  let last: { message: string } = new Error("Timeout");
+
   while (Date.now() < deadline) {
-    try {
-      return await fetch(url);
-    } catch (e) {
-      last = e;
-      await new Promise((r) => setTimeout(r, 250));
+    const result = await Result.tryPromise(() => fetch(url));
+
+    if (result.isOk()) {
+      return result.value;
     }
+
+    last = result.error;
+    await new Promise((r) => setTimeout(r, 250));
   }
-  throw last instanceof Error ? last : new Error(String(last));
+
+  throw new Error(last.message);
 }
 
 describe.sequential("elysia CLI (dist/cli.js)", () => {
@@ -96,6 +101,7 @@ describe.sequential("elysia CLI (dist/cli.js)", () => {
   it("optimize writes bundle to -o path", () => {
     const dir = mkdtempSync(join(tmpdir(), "elysia-cli-opt-"));
     const outFile = join(dir, "bundle.mjs");
+
     try {
       run(["optimize", "test/fixtures/basic-app.ts", "-o", outFile]);
       expect(existsSync(outFile)).toBe(true);
@@ -122,6 +128,7 @@ describe.sequential("elysia CLI (dist/cli.js)", () => {
         env: { ...process.env },
       },
     );
+
     try {
       const res = await waitForHttp(`http://127.0.0.1:${port}/`, 25_000);
       expect(res.status).toBe(200);
@@ -138,13 +145,17 @@ const skipNetwork = process.env.SKIP_NETWORK_CLI === "1";
 function extractSearchJsonArray(stdout: string): unknown[] {
   const start = stdout.indexOf("[");
   const end = stdout.lastIndexOf("]");
+
   if (start === -1 || end <= start) {
     throw new Error(`Expected JSON array in search output, got:\n${stdout.slice(0, 800)}`);
   }
+
   const parsed = JSON.parse(stdout.slice(start, end + 1)) as unknown;
+
   if (!Array.isArray(parsed)) {
     throw new Error("Search output JSON is not an array");
   }
+
   return parsed;
 }
 

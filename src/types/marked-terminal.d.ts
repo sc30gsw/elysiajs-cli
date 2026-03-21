@@ -22,7 +22,10 @@ declare module "marked-terminal" {
   }
 
   /**
-   * Extension object for `marked.use()` (marked v9+).
+   * Extension object for `marked.use()` (marked v9+)
+   * @param options - Optional terminal renderer options
+   * @param highlightOptions - Optional syntax highlighting options
+   * @returns Extension object for use with `marked.use()`
    */
   export function markedTerminal(
     options?: TerminalRendererOptions,

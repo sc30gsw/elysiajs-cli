@@ -7,6 +7,7 @@
 **Description:** CLI for ElysiaJS — browse docs, search, test requests, serve, and optimize your Elysia app.
 
 **Runtime requirements:**
+
 - Bun ≥ 1.0 (recommended, native hot reload)
 - Node.js ≥ 20 (also supported)
 - elysia ≥ 1.4.0 (peer dependency)
@@ -118,5 +119,5 @@ src/
 ## Elysia Agent Skill (Claude plugin / Cursor)
 
 - **Skill file:** [`skills/elysia-cli/SKILL.md`](skills/elysia-cli/SKILL.md) — when to trigger, untrusted-doc rules, `elysia docs` / `elysia search` / `elysia req`, inline API notes, and **official-aligned structure** (MVC-style folders, controller/service/model, `essential/best-practice`).
-- **Claude Code:** add marketplace `sc30gsw/elysiajs-cli`, then `/plugin install elysia-skill@elysia` (see [README.md](README.md) § *Claude Code plugin*).
+- **Claude Code:** add marketplace `sc30gsw/elysiajs-cli`, then `/plugin install elysia-skill@elysia` (see [README.md](README.md) § _Claude Code plugin_).
 - **CLI:** this skill expects `@sc30gsw/elysiajs-cli` installed (global or devDependency); command cheat sheet is in **Elysia CLI Commands** above. For architecture and validation patterns, prefer `elysia docs essential/best-practice` and `elysia docs essential/validation` over guessing.

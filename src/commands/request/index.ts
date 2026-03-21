@@ -1,10 +1,14 @@
+import type { PathLike } from "fs";
+import { writeFile } from "fs/promises";
+
+import { Result } from "better-result";
 import chalk from "chalk";
 import type { Command } from "commander";
 
 import { formatMethod, formatStatus, elapsed, header, error, info, dim } from "~/utils/display.js";
 import { loadApp } from "~/utils/loader.js";
 
-interface RequestOptions {
+interface RequestResolvedOptions {
   method: string;
   header: string[];
   body: string | undefined;
@@ -14,37 +18,68 @@ interface RequestOptions {
   output: string | undefined;
 }
 
+type RequestCliOptionsRaw = Partial<RequestResolvedOptions>;
+
 /**
- * Parse header strings into Headers object
+ * Normalize partial CLI options into concrete values for a single request run.
+ * @param raw - Options as received from Commander (all fields optional)
+ * @returns Fully resolved request options with defaults applied
  */
-function parseHeaders(headers: string[]): Headers {
-  const result = new Headers();
-  for (const h of headers) {
-    const colonIdx = h.indexOf(":");
-    if (colonIdx === -1) {
-      throw new Error(`Invalid header format: "${h}". Expected "Name: Value"`);
-    }
-    const name = h.slice(0, colonIdx).trim();
-    const value = h.slice(colonIdx + 1).trim();
-    result.set(name, value);
-  }
-  return result;
+function parseRequestOptions(raw: RequestCliOptionsRaw) {
+  return {
+    method: raw.method ?? "GET",
+    header: raw.header ?? [],
+    body: raw.body ?? undefined,
+    verbose: raw.verbose ?? false,
+    watch: raw.watch ?? false,
+    json: raw.json ?? false,
+    output: raw.output ?? undefined,
+  } as const satisfies RequestResolvedOptions;
 }
 
 /**
- * Build a Request object from CLI options
+ * Parse header strings into Headers object
+ * @param headers - Array of header strings in "Name: Value" format
+ * @returns `Ok` with a populated Headers object, or `Err` if any header is malformed
  */
-function buildRequest(url: string, opts: RequestOptions): Request {
-  const headers = parseHeaders(opts.header);
+function parseHeaders(headers: string[]) {
+  const result = new Headers();
 
-  // Set Content-Type for body if not set
-  if (opts.body && !headers.has("content-type")) {
-    try {
-      JSON.parse(opts.body);
-      headers.set("content-type", "application/json");
-    } catch {
-      headers.set("content-type", "text/plain");
+  for (const h of headers) {
+    const colonIdx = h.indexOf(":");
+
+    if (colonIdx === -1) {
+      return Result.err(new Error(`Invalid header format: "${h}". Expected "Name: Value"`));
     }
+
+    const name = h.slice(0, colonIdx).trim();
+    const value = h.slice(colonIdx + 1).trim();
+
+    result.set(name, value);
+  }
+
+  return Result.ok(result);
+}
+
+/**
+ * Build a Request object from parsed headers and options
+ * @param url - Fully qualified URL for the request
+ * @param headers - Parsed request headers
+ * @param opts - Resolved request options (method, body, etc.)
+ * @returns Constructed Request object ready for dispatch
+ */
+function buildRequest(url: string, headers: Headers, opts: RequestResolvedOptions) {
+  if (opts.body && !headers.has("content-type")) {
+    const body = opts.body;
+
+    Result.try(() => JSON.parse(body)).match({
+      ok: () => {
+        headers.set("content-type", "application/json");
+      },
+      err: () => {
+        headers.set("content-type", "text/plain");
+      },
+    });
   }
 
   return new Request(url, {
@@ -56,94 +91,138 @@ function buildRequest(url: string, opts: RequestOptions): Request {
 
 /**
  * Format response body for display
+ * @param response - HTTP response to read body from
+ * @param forceJson - If `true`, attempt to pretty-print as JSON regardless of content type
+ * @returns Formatted body string
  */
-async function formatBody(response: Response, forceJson: boolean): Promise<string> {
+async function formatBody(response: Response, forceJson: boolean) {
   const contentType = response.headers.get("content-type") ?? "";
   const text = await response.text();
 
   if (forceJson || contentType.includes("application/json")) {
-    try {
-      const parsed = JSON.parse(text);
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return text;
-    }
+    return Result.try(() => JSON.parse(text)).match({
+      ok: (parsed) => JSON.stringify(parsed, null, 2),
+      err: () => text,
+    });
   }
 
   return text;
 }
 
 /**
- * Execute a request against an Elysia app
+ * Print request line, headers, and body (pretty JSON when parseable) in verbose mode.
+ * @param url - Full request URL
+ * @param method - HTTP method label
+ * @param headers - Headers after parsing (including inferred `Content-Type` from {@link buildRequest})
+ * @param body - Optional raw body string
  */
-async function executeRequest(
-  entry: string,
-  urlOrPath: string,
-  opts: RequestOptions,
-): Promise<void> {
-  const { app } = await loadApp(entry);
+function logVerboseRequest(
+  url: string,
+  method: string,
+  headers: Headers,
+  body: string | undefined,
+) {
+  header("Request");
+  console.log(`  ${formatMethod(method)}  ${url}`);
 
-  // Build the URL - if path is given without host, use localhost
-  const url = urlOrPath.startsWith("http")
-    ? urlOrPath
-    : `http://localhost${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;
-
-  const request = buildRequest(url, opts);
-
-  if (opts.verbose) {
-    header("Request");
-    console.log(`  ${formatMethod(opts.method)}  ${url}`);
-
-    const headers = parseHeaders(opts.header);
-    if (headers.entries) {
-      for (const [name, value] of headers.entries()) {
-        dim(`  ${name}: ${value}`);
-      }
-    }
-
-    if (opts.body) {
-      console.log();
-      info("Body:");
-      try {
-        console.log(JSON.stringify(JSON.parse(opts.body), null, 2));
-      } catch {
-        console.log(opts.body);
-      }
-    }
-    console.log();
+  for (const [name, value] of headers.entries()) {
+    dim(`  ${name}: ${value}`);
   }
 
-  const start = Date.now();
-  const response = await app.handle(request);
-  const ms = Date.now() - start;
-
-  const status = formatStatus(response.status);
-  const time = chalk.dim(`${elapsed(ms)}`);
-
-  if (opts.verbose) {
-    header("Response");
-    console.log(`  ${status} ${response.statusText}  ${time}`);
-
-    for (const [name, value] of response.headers.entries()) {
-      dim(`  ${name}: ${value}`);
-    }
-    console.log();
-  } else {
-    console.log(`${status} ${time}`);
+  if (!body) {
+    return;
   }
 
-  const body = await formatBody(response, opts.json);
+  info("Body:");
+  Result.try(() => JSON.parse(body)).match({
+    ok: (parsed) => {
+      console.log(JSON.stringify(parsed, null, 2));
+    },
+    err: () => {
+      console.log(body);
+    },
+  });
+}
 
-  if (opts.output) {
-    const { writeFile } = await import("fs/promises");
-    await writeFile(opts.output, body, "utf-8");
-    info(`Response written to: ${opts.output}`);
-  } else {
-    console.log(body);
+/**
+ * Print status line and response headers in verbose mode.
+ * @param response - Response from `app.handle`
+ * @param status - Colored status code string from {@link formatStatus}
+ * @param time - Dimmed elapsed time label
+ */
+function logVerboseResponse(response: Response, status: string, time: string) {
+  header("Response");
+  console.log(`  ${status} ${response.statusText}  ${time}`);
+
+  for (const [name, value] of response.headers.entries()) {
+    dim(`  ${name}: ${value}`);
   }
 }
 
-export function registerRequestCommand(program: Command): void {
+/**
+ * Execute a request against an Elysia app
+ * @param entry - Entry file path for the Elysia app
+ * @param urlOrPath - URL or path to request (e.g., "/api/users" or "http://localhost/...")
+ * @param opts - Resolved request options
+ * @returns `Ok` on success, or `Err` with a descriptive error
+ */
+async function executeRequest(entry: string, urlOrPath: string, opts: RequestResolvedOptions) {
+  return Result.gen(async function* () {
+    const { app } = yield* Result.await(loadApp(entry));
+    const headers = yield* parseHeaders(opts.header);
+
+    const url = urlOrPath.startsWith("http")
+      ? urlOrPath
+      : `http://localhost${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;
+
+    const request = buildRequest(url, headers, opts);
+
+    if (opts.verbose) {
+      logVerboseRequest(url, opts.method, headers, opts.body);
+    }
+
+    const start = Date.now();
+    const response = yield* Result.await(
+      Result.tryPromise({
+        try: () => app.handle(request),
+        catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+      }),
+    );
+    const ms = Date.now() - start;
+
+    const status = formatStatus(response.status);
+    const time = chalk.dim(`${elapsed(ms)}`);
+
+    if (opts.verbose) {
+      logVerboseResponse(response, status, time);
+    } else {
+      console.log(`${status} ${time}`);
+    }
+
+    const body = await formatBody(response, opts.json);
+
+    if (opts.output) {
+      const outPath: PathLike = opts.output;
+      yield* Result.await(
+        Result.tryPromise({
+          try: () => writeFile(outPath, body, "utf-8"),
+          catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+        }),
+      );
+      info(`Response written to: ${opts.output}`);
+    } else {
+      console.log(body);
+    }
+
+    return Result.ok();
+  });
+}
+
+/**
+ * Register the `elysia request` / `elysia req` command on the given Commander program.
+ * @param program - Root or parent Commander instance
+ */
+export function registerRequestCommand(program: Command) {
   program
     .command("request [file] [url]")
     .alias("req")
@@ -155,41 +234,31 @@ export function registerRequestCommand(program: Command): void {
     .option("--watch", "Watch for file changes and re-run", false)
     .option("--json", "Force JSON output formatting", false)
     .option("-o, --output <file>", "Write response body to file")
-    .action(async (file?: string, url?: string, opts: Partial<RequestOptions> = {}) => {
+    .action(async (file?: string, url?: string, rawOpts: RequestCliOptionsRaw = {}) => {
       const resolvedFile = file ?? "src/index.ts";
       const resolvedUrl = url ?? "/";
-      const options: RequestOptions = {
-        method: opts.method ?? "GET",
-        header: opts.header ?? [],
-        body: opts.body ?? undefined,
-        verbose: opts.verbose ?? false,
-        watch: opts.watch ?? false,
-        json: opts.json ?? false,
-        output: opts.output ?? undefined,
-      };
+      const options = parseRequestOptions(rawOpts);
 
-      try {
-        await executeRequest(resolvedFile, resolvedUrl, options);
+      const result = await executeRequest(resolvedFile, resolvedUrl, options);
 
-        if (options.watch) {
-          const chokidar = await import("chokidar");
-          const watcher = chokidar.watch(resolvedFile, { ignoreInitial: true });
-
-          info(`Watching ${resolvedFile} for changes...`);
-
-          watcher.on("change", async () => {
-            console.log();
-            info("File changed, re-running request...");
-            try {
-              await executeRequest(resolvedFile, resolvedUrl, options);
-            } catch (err) {
-              error(err instanceof Error ? err.message : String(err));
-            }
-          });
-        }
-      } catch (err) {
-        error(err instanceof Error ? err.message : String(err));
+      if (result.isErr()) {
+        error(result.error.message);
         process.exit(1);
+      }
+
+      if (options.watch) {
+        const chokidar = await import("chokidar");
+        const watcher = chokidar.watch(resolvedFile, { ignoreInitial: true });
+
+        info(`Watching ${resolvedFile} for changes...`);
+
+        watcher.on("change", async () => {
+          info("File changed, re-running request...");
+          const r = await executeRequest(resolvedFile, resolvedUrl, options);
+          if (r.isErr()) {
+            error(r.error.message);
+          }
+        });
       }
     });
 }

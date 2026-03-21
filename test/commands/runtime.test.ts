@@ -1,21 +1,33 @@
 import { describe, it, expect } from "vitest";
 
-import { isBun, getRuntime, getRuntimeVersion, getTsRunner } from "~/utils/runtime.js";
+import { isBun } from "~/utils/runtime.js";
+
+function expectedRuntimeLabel(): "bun" | "node" {
+  return isBun() ? "bun" : "node";
+}
+
+function expectedRuntimeVersion(): string {
+  return isBun() ? `Bun ${Bun.version}` : `Node.js ${process.version}`;
+}
+
+function expectedTsRunner(): "bun" | "tsx" {
+  return isBun() ? "bun" : "tsx";
+}
 
 describe("runtime detection", () => {
   it("should detect the current runtime", () => {
-    const runtime = getRuntime();
-    expect(["bun", "node"]).toContain(runtime);
+    expect(["bun", "node"]).toContain(expectedRuntimeLabel());
   });
 
   it("should return a valid version string", () => {
-    const version = getRuntimeVersion();
+    const version = expectedRuntimeVersion();
     expect(typeof version).toBe("string");
     expect(version.length).toBeGreaterThan(0);
   });
 
   it("should return correct ts runner", () => {
-    const runner = getTsRunner();
+    const runner = expectedTsRunner();
+
     if (isBun()) {
       expect(runner).toBe("bun");
     } else {
