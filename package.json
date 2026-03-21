@@ -15,7 +15,7 @@
     "url": "git+https://github.com/sc30gsw/elysiajs-cli.git"
   },
   "bin": {
-    "elysia": "./dist/cli.js"
+    "elysia": "dist/cli.js"
   },
   "files": [
     "dist",
