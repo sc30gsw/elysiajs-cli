@@ -28,12 +28,15 @@ bun run oxlint:check               # oxlint linting
 ## Workflow
 
 ### 1. Collect All Errors
+
 - Run `bun run typecheck` to get all type errors
 - Categorize: type inference, missing types, imports, config, dependencies
 - Prioritize: build-blocking first, then type errors, then warnings
 
 ### 2. Fix Strategy (MINIMAL CHANGES)
+
 For each error:
+
 1. Read the error message carefully — understand expected vs actual
 2. Find the minimal fix (type annotation, null check, import fix)
 3. Verify fix doesn't break other code — rerun typecheck
@@ -41,20 +44,21 @@ For each error:
 
 ### 3. Common Fixes
 
-| Error | Fix |
-|-------|-----|
-| `implicitly has 'any' type` | Add type annotation |
-| `Object is possibly 'undefined'` | Optional chaining `?.` or null check |
-| `Property does not exist` | Add to interface or use optional `?` |
-| `Cannot find module` | Check tsconfig paths, install with `bun add`, or fix import path |
-| `Type 'X' not assignable to 'Y'` | Parse/convert type or fix the type |
-| `Generic constraint` | Add `extends { ... }` |
-| `'await' outside async` | Add `async` keyword |
-| Missing `.js` extension | ESM requires `.js` extension in import paths |
+| Error                            | Fix                                                              |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `implicitly has 'any' type`      | Add type annotation                                              |
+| `Object is possibly 'undefined'` | Optional chaining `?.` or null check                             |
+| `Property does not exist`        | Add to interface or use optional `?`                             |
+| `Cannot find module`             | Check tsconfig paths, install with `bun add`, or fix import path |
+| `Type 'X' not assignable to 'Y'` | Parse/convert type or fix the type                               |
+| `Generic constraint`             | Add `extends { ... }`                                            |
+| `'await' outside async`          | Add `async` keyword                                              |
+| Missing `.js` extension          | ESM requires `.js` extension in import paths                     |
 
 ## DO and DON'T
 
 **DO:**
+
 - Add type annotations where missing
 - Add null checks where needed
 - Fix imports/exports (remember: `.js` extension required for ESM)
@@ -62,6 +66,7 @@ For each error:
 - Update type definitions
 
 **DON'T:**
+
 - Refactor unrelated code
 - Change architecture
 - Rename variables (unless causing error)
@@ -71,11 +76,11 @@ For each error:
 
 ## Priority Levels
 
-| Level | Symptoms | Action |
-|-------|----------|--------|
-| CRITICAL | Build completely broken | Fix immediately |
-| HIGH | Single file failing, new code type errors | Fix soon |
-| MEDIUM | Linter warnings, deprecated APIs | Fix when possible |
+| Level    | Symptoms                                  | Action            |
+| -------- | ----------------------------------------- | ----------------- |
+| CRITICAL | Build completely broken                   | Fix immediately   |
+| HIGH     | Single file failing, new code type errors | Fix soon          |
+| MEDIUM   | Linter warnings, deprecated APIs          | Fix when possible |
 
 ## Quick Recovery
 

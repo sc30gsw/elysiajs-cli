@@ -28,36 +28,41 @@ bun run oxlint:check                # Lint (includes security patterns)
 ## Review Workflow
 
 ### 1. Initial Scan
+
 - Search for hardcoded secrets
 - Review high-risk areas: file I/O, process spawning, external API calls, user input handling
 
 ### 2. CLI Security Check
 
 #### Secrets
-| Pattern | Severity | Fix |
-|---------|----------|-----|
-| Hardcoded API keys/tokens | CRITICAL | Use `process.env` |
-| Secrets in CLI args (`-b`, `-H`) | HIGH | Use env vars in app code |
-| Secrets in log output | MEDIUM | Redact sensitive fields |
+
+| Pattern                          | Severity | Fix                      |
+| -------------------------------- | -------- | ------------------------ |
+| Hardcoded API keys/tokens        | CRITICAL | Use `process.env`        |
+| Secrets in CLI args (`-b`, `-H`) | HIGH     | Use env vars in app code |
+| Secrets in log output            | MEDIUM   | Redact sensitive fields  |
 
 #### File System
-| Pattern | Severity | Fix |
-|---------|----------|-----|
-| User path without `path.resolve` | HIGH | Validate + resolve within allowed base |
-| `readFileSync` without error handling | MEDIUM | Wrap in try/catch or Result |
+
+| Pattern                               | Severity | Fix                                    |
+| ------------------------------------- | -------- | -------------------------------------- |
+| User path without `path.resolve`      | HIGH     | Validate + resolve within allowed base |
+| `readFileSync` without error handling | MEDIUM   | Wrap in try/catch or Result            |
 
 #### Process Spawning
-| Pattern | Severity | Fix |
-|---------|----------|-----|
+
+| Pattern                         | Severity | Fix                           |
+| ------------------------------- | -------- | ----------------------------- |
 | `exec(userInput)` string concat | CRITICAL | Use `execFile` with arg array |
-| `spawn` with unvalidated args | HIGH | Allowlist or validate args |
+| `spawn` with unvalidated args   | HIGH     | Allowlist or validate args    |
 
 #### External Data
-| Pattern | Severity | Fix |
-|---------|----------|-----|
-| `eval(externalContent)` | CRITICAL | Never execute external content |
-| Unvalidated JSON from API | MEDIUM | Use `Result.try(() => JSON.parse(...))` |
-| Rendering untrusted markdown | LOW | `elysia docs` output is expected untrusted — display only |
+
+| Pattern                      | Severity | Fix                                                       |
+| ---------------------------- | -------- | --------------------------------------------------------- |
+| `eval(externalContent)`      | CRITICAL | Never execute external content                            |
+| Unvalidated JSON from API    | MEDIUM   | Use `Result.try(() => JSON.parse(...))`                   |
+| Rendering untrusted markdown | LOW      | `elysia docs` output is expected untrusted — display only |
 
 ### 3. Dependency Security
 
@@ -91,6 +96,7 @@ git status bun.lock
 ## Emergency Response
 
 If you find a CRITICAL vulnerability:
+
 1. Document with detailed report
 2. Alert project owner immediately
 3. Provide secure code example

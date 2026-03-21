@@ -17,6 +17,7 @@ This command invokes the **tdd-guide** agent to enforce test-driven development 
 ## When to Use
 
 Use `/tdd` when:
+
 - Implementing new CLI commands
 - Adding new utility functions
 - Fixing bugs (write test that reproduces bug first)
@@ -157,6 +158,7 @@ bun run test:coverage
 ## TDD Best Practices
 
 **DO:**
+
 - ✅ Write the test FIRST, before any implementation
 - ✅ Run tests and verify they FAIL before implementing
 - ✅ Write minimal code to make tests pass
@@ -165,6 +167,7 @@ bun run test:coverage
 - ✅ Add edge cases and error scenarios
 
 **DON'T:**
+
 - ❌ Write implementation before tests
 - ❌ Skip running tests after each change
 - ❌ Write too much code at once

@@ -13,12 +13,12 @@ Analyze the codebase structure and generate token-lean architecture documentatio
 
 Create or update codemaps in `docs/CODEMAPS/` (or `.reports/codemaps/`):
 
-| File | Contents |
-|------|----------|
+| File              | Contents                                             |
+| ----------------- | ---------------------------------------------------- |
 | `architecture.md` | High-level CLI architecture, command flow, data flow |
-| `commands.md` | CLI commands, options, and their implementations |
-| `utilities.md` | Utility modules and their responsibilities |
-| `dependencies.md` | External packages and their purposes |
+| `commands.md`     | CLI commands, options, and their implementations     |
+| `utilities.md`    | Utility modules and their responsibilities           |
+| `dependencies.md` | External packages and their purposes                 |
 
 ### Codemap Format
 
@@ -28,23 +28,27 @@ Each codemap should be token-lean — optimized for AI context consumption:
 # CLI Architecture
 
 ## Entry Point
+
 src/cli.ts → creates Commander program → registers all commands → program.parse()
 
 ## Commands
-elysia docs [path]     → registerDocsCommand   → src/commands/docs/index.ts
-elysia search <query>  → registerSearchCommand  → src/commands/search/index.ts
-elysia req [entry]     → registerRequestCommand → src/commands/request/index.ts
-elysia serve [entry]   → registerServeCommand   → src/commands/serve/index.ts
-elysia optimize        → registerOptimizeCommand → src/commands/optimize/index.ts
+
+elysia docs [path] → registerDocsCommand → src/commands/docs/index.ts
+elysia search <query> → registerSearchCommand → src/commands/search/index.ts
+elysia req [entry] → registerRequestCommand → src/commands/request/index.ts
+elysia serve [entry] → registerServeCommand → src/commands/serve/index.ts
+elysia optimize → registerOptimizeCommand → src/commands/optimize/index.ts
 
 ## Utilities
-src/utils/display.ts   → terminal output helpers (success, error, info, dim, header)
-src/utils/fetcher.ts   → GitHub API HTTP client (up-fetch based)
-src/utils/loader.ts    → Elysia app entry resolution and dynamic import
-src/utils/routes.ts    → route extraction from Elysia app instance
-src/utils/runtime.ts   → Bun vs Node.js detection (isBun())
+
+src/utils/display.ts → terminal output helpers (success, error, info, dim, header)
+src/utils/fetcher.ts → GitHub API HTTP client (up-fetch based)
+src/utils/loader.ts → Elysia app entry resolution and dynamic import
+src/utils/routes.ts → route extraction from Elysia app instance
+src/utils/runtime.ts → Bun vs Node.js detection (isBun())
 
 ## Key Patterns
+
 - Options: XxxCliOptionsRaw (Partial) → parseXxxOptions() → XxxResolvedOptions
 - Errors: better-result Result<T, Error> → exitOnError() for CLI exit
 - Cache: ~/.cache/elysia-cli/ with 24h TTL
@@ -67,6 +71,7 @@ Add a freshness header to each codemap:
 ## Step 5: Save Analysis Report
 
 Write a summary to `.reports/codemap-diff.txt`:
+
 - Files added/removed/modified since last scan
 - New commands or utilities detected
 - Architecture changes (new patterns, removed dependencies)

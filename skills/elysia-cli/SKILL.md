@@ -90,26 +90,25 @@ Alias: `elysia request`. Options include `-m`, `-H`, `-b`, `-v`, `--watch`, `--j
 ### App constructor
 
 ```ts
-import { Elysia } from 'elysia'
+import { Elysia } from "elysia";
 
-const app = new Elysia()
-  .get('/', () => 'ok')
+const app = new Elysia().get("/", () => "ok");
 
 // With typed context (example shape; refine in your app)
-type App = typeof app
+type App = typeof app;
 ```
 
 ### HTTP methods and path patterns
 
 ```ts
 app
-  .get('/user/:id', ({ params: { id } }) => id)
-  .post('/form', ({ body }) => body)
-  .put('/resource', () => 'put')
-  .patch('/resource', () => 'patch')
-  .delete('/resource', () => 'delete')
-  .options('/cors-preflight', () => '')
-  .all('/wildcard', () => 'any method')
+  .get("/user/:id", ({ params: { id } }) => id)
+  .post("/form", ({ body }) => body)
+  .put("/resource", () => "put")
+  .patch("/resource", () => "patch")
+  .delete("/resource", () => "delete")
+  .options("/cors-preflight", () => "")
+  .all("/wildcard", () => "any method");
 ```
 
 Path params are available as `params` (typed when using schema). For details on advanced patterns, use `elysia docs` / `elysia search`.
@@ -117,11 +116,9 @@ Path params are available as `params` (typed when using schema). For details on 
 ### Grouping and mounting
 
 ```ts
-const api = new Elysia({ prefix: '/api' })
-  .get('/health', () => ({ ok: true }))
+const api = new Elysia({ prefix: "/api" }).get("/health", () => ({ ok: true }));
 
-const app = new Elysia()
-  .use(api)
+const app = new Elysia().use(api);
 // or .group('/v1', (app) => app.get('/ping', () => 'pong'))
 ```
 
@@ -132,23 +129,23 @@ Execution order matters. Common hooks:
 ```ts
 new Elysia()
   .onBeforeHandle(({ set }) => {
-    set.headers['x-powered-by'] = 'elysia'
+    set.headers["x-powered-by"] = "elysia";
   })
   .derive(({ request }) => ({
-    requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
+    requestId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
   }))
   .resolve(async () => ({
     db: await connectDb(),
   }))
   .onAfterHandle(({ set }) => {
-    set.headers['x-timing'] = 'done'
+    set.headers["x-timing"] = "done";
   })
   .mapResponse(({ response }) => response)
   .onError(({ code, error, set }) => {
-    if (code === 'NOT_FOUND') return 'Not Found'
-    console.error(error)
-    return 'Internal Error'
-  })
+    if (code === "NOT_FOUND") return "Not Found";
+    console.error(error);
+    return "Internal Error";
+  });
 ```
 
 Use `elysia search "derive"` / `elysia docs` for hook ordering and edge cases.
@@ -158,20 +155,15 @@ Use `elysia search "derive"` / `elysia docs` for hook ordering and edge cases.
 Elysia supports Standard Schema validators (e.g. Zod, Valibot, ArkType). Example with Zod:
 
 ```ts
-import { Elysia, t } from 'elysia'
-import { z } from 'zod'
+import { Elysia, t } from "elysia";
+import { z } from "zod";
 
-const app = new Elysia()
-  .post(
-    '/user',
-    ({ body }) => body,
-    {
-      body: z.object({
-        name: z.string(),
-        age: z.number().optional(),
-      }),
-    },
-  )
+const app = new Elysia().post("/user", ({ body }) => body, {
+  body: z.object({
+    name: z.string(),
+    age: z.number().optional(),
+  }),
+});
 ```
 
 `t` (TypeBox) remains common for inline schemas — see `elysia docs essential/validation` (or `elysia search "typebox"`) for the style your codebase uses.
@@ -179,28 +171,28 @@ const app = new Elysia()
 ### Response helpers
 
 ```ts
-app.get('/json', ({ set }) => {
-  set.status = 201
-  return { created: true }
-})
+app.get("/json", ({ set }) => {
+  set.status = 201;
+  return { created: true };
+});
 
-app.get('/redirect', ({ redirect }) => redirect('/login'))
-app.get('/file', ({ set }) => {
-  set.headers['content-type'] = 'text/plain'
-  return 'hello'
-})
+app.get("/redirect", ({ redirect }) => redirect("/login"));
+app.get("/file", ({ set }) => {
+  set.headers["content-type"] = "text/plain";
+  return "hello";
+});
 ```
 
 ### State, decorate, model
 
 ```ts
 const app = new Elysia()
-  .state('counter', 0)
-  .decorate('now', () => Date.now())
-  .get('/count', ({ store }) => {
-    store.counter++
-    return store.counter
-  })
+  .state("counter", 0)
+  .decorate("now", () => Date.now())
+  .get("/count", ({ store }) => {
+    store.counter++;
+    return store.counter;
+  });
 ```
 
 Use **`.model()`** and grouped schemas for reusable DTOs — see **Structure and best practices** below and `elysia docs essential/validation` (reference model).
@@ -208,17 +200,15 @@ Use **`.model()`** and grouped schemas for reusable DTOs — see **Structure and
 ### Plugins
 
 ```ts
-import { cors } from '@elysiajs/cors'
-import { jwt } from '@elysiajs/jwt'
+import { cors } from "@elysiajs/cors";
+import { jwt } from "@elysiajs/jwt";
 
-const app = new Elysia()
-  .use(cors())
-  .use(
-    jwt({
-      name: 'jwt',
-      secret: process.env.JWT_SECRET!,
-    }),
-  )
+const app = new Elysia().use(cors()).use(
+  jwt({
+    name: "jwt",
+    secret: process.env.JWT_SECRET!,
+  }),
+);
 ```
 
 Import paths and options vary by package — use `elysia search "<plugin-name>"` or `elysia docs plugins/...`.
@@ -226,13 +216,13 @@ Import paths and options vary by package — use `elysia search "<plugin-name>"`
 ### WebSocket
 
 ```ts
-import { Elysia } from 'elysia'
+import { Elysia } from "elysia";
 
-const app = new Elysia().ws('/ws', {
+const app = new Elysia().ws("/ws", {
   message(ws, message) {
-    ws.send(message)
+    ws.send(message);
   },
-})
+});
 ```
 
 Adapter-specific WebSocket details (Bun vs Node) — confirm with docs for your runtime.
@@ -251,11 +241,11 @@ elysia search "eden treaty"
 Same mechanism as `elysia req` (full lifecycle, no listen):
 
 ```ts
-const res = await app.handle(new Request('http://localhost/posts'))
-expect(res.status).toBe(200)
+const res = await app.handle(new Request("http://localhost/posts"));
+expect(res.status).toBe(200);
 ```
 
-For patterns aligned with official guidance, see **Structure and best practices** → *Testing*.
+For patterns aligned with official guidance, see **Structure and best practices** → _Testing_.
 
 ---
 
@@ -299,7 +289,7 @@ This keeps related code together and scales better than a purely technical split
 
 ```ts
 // Prefer: Elysia instance + inline handler + plain service call
-new Elysia().get('/', ({ stuff }) => Service.doStuff(stuff))
+new Elysia().get("/", ({ stuff }) => Service.doStuff(stuff));
 
 // Avoid: static handler(context: Context) { ... }
 ```
@@ -316,18 +306,18 @@ new Elysia().get('/', ({ stuff }) => Service.doStuff(stuff))
 - **Avoid:** Treating a **class instance** as the “model” for validation, or maintaining parallel interfaces that drift from schemas.
 
 ```ts
-import { t, type UnwrapSchema } from 'elysia'
+import { t, type UnwrapSchema } from "elysia";
 
 export const AuthModel = {
   signInBody: t.Object({
     username: t.String(),
     password: t.String(),
   }),
-} as const
+} as const;
 
 export type AuthModelTypes = {
-  [k in keyof typeof AuthModel]: UnwrapSchema<(typeof AuthModel)[k]>
-}
+  [k in keyof typeof AuthModel]: UnwrapSchema<(typeof AuthModel)[k]>;
+};
 ```
 
 ### `decorate`
