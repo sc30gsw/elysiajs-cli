@@ -3,41 +3,41 @@
     {
       "fileMatch": ["bun.lock"],
       "schema": {
-        "allowTrailingCommas": true
-      }
-    }
+        "allowTrailingCommas": true,
+      },
+    },
   ],
   "files.readonlyInclude": {
     "bun.lock": true,
-    "**/*.md": true
+    "**/*.md": true,
   },
-  "cSpell.ignorePaths": ["bun.lock", "**/routeTree.gen.ts", "**/*.md"],
+  "cSpell.ignorePaths": ["bun.lock", "**/*.md"],
   "cSpell.words": ["bunx", "Lefthook", "oxfmt", "oxlint", "tsgo", "tsgolint"],
 
   // oxc
   "oxc.enable": true,
   "[typescript]": {
-    "editor.defaultFormatter": "oxc.oxc-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode",
   },
   "[typescriptreact]": {
-    "editor.defaultFormatter": "oxc.oxc-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode",
   },
   "[javascript]": {
-    "editor.defaultFormatter": "oxc.oxc-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode",
   },
   "[javascriptreact]": {
-    "editor.defaultFormatter": "oxc.oxc-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode",
   },
   "[json]": {
-    "editor.defaultFormatter": "oxc.oxc-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode",
   },
   "[jsonc]": {
-    "editor.defaultFormatter": "oxc.oxc-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode",
   },
   "editor.formatOnSave": true,
 
   // Disable other linters/formatters
   "prettier.enable": false,
   "biome.enabled": false,
-  "eslint.enable": false
+  "eslint.enable": false,
 }
