@@ -4,7 +4,7 @@ import { join } from "path";
 
 import { Result } from "better-result";
 import type { Command } from "commander";
-import type { FuseResult } from "fuse.js";
+import { filter, map, pipe } from "remeda";
 
 import type { DocsRepoRelativePath } from "~/types/docs-repo-path.js";
 import {
@@ -22,19 +22,27 @@ const CACHE_DIR = join(homedir(), ".cache", "elysia-cli", "search");
 const INDEX_FILE = join(CACHE_DIR, "index.json");
 const INDEX_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-/** Resolved options for `elysia search` */
-export interface SearchResolvedOptions {
+/**
+ * Resolved options for `elysia search`
+ */
+interface SearchResolvedOptions {
   limit: number;
   pretty: boolean;
   rebuild: boolean;
 }
 
-export type SearchCliOptionsRaw = Partial<
+type SearchCliOptionsRaw = Partial<
   Pick<SearchResolvedOptions, "pretty" | "rebuild"> & { limit?: string }
 >;
 
+/**
+ * Normalize raw Commander options for `elysia search`.
+ * @param raw - Partial CLI options (`limit` may be a string from the parser)
+ * @returns Resolved limit, pretty-print flag, and rebuild flag
+ */
 function parseSearchOptions(raw: SearchCliOptionsRaw): SearchResolvedOptions {
   const limit = parseInt(raw.limit ?? "10", 10);
+
   return {
     limit: Number.isFinite(limit) ? limit : 10,
     pretty: raw.pretty ?? false,
@@ -43,7 +51,8 @@ function parseSearchOptions(raw: SearchCliOptionsRaw): SearchResolvedOptions {
 }
 
 /**
- * Check if the search index needs to be rebuilt
+ * Whether the on-disk search index cache can be used without rebuilding.
+ * @returns `true` if the index file exists and is newer than {@link INDEX_TTL_MS}
  */
 function isIndexValid(): boolean {
   if (!existsSync(INDEX_FILE)) return false;
@@ -53,17 +62,20 @@ function isIndexValid(): boolean {
 
 /**
  * Fetch all markdown file paths from the documentation repo
+ * @returns `Ok` with an array of repo-relative markdown paths, or `Err` on network failure
  */
 async function fetchDocFilePaths(): Promise<Result<DocsRepoRelativePath[], Error>> {
   return Result.tryPromise({
     try: async () => {
       const tree = await githubApiFetcher(DOCS_REPO_URL);
-      return tree.tree
-        .filter(
+      return pipe(
+        tree.tree,
+        filter(
           (item) =>
             item.type === "blob" && item.path.startsWith("docs/") && item.path.endsWith(".md"),
-        )
-        .map((item) => item.path.replace("docs/", "") as DocsRepoRelativePath);
+        ),
+        map((item) => item.path.replace("docs/", "") as DocsRepoRelativePath),
+      );
     },
     catch: (e) => (e instanceof Error ? e : new Error(String(e))),
   });
@@ -90,20 +102,64 @@ const FALLBACK_DOCS_PATHS = FALLBACK_PATHS as unknown as readonly DocsRepoRelati
 
 /**
  * Extract title from markdown content
+ * @param content - Raw markdown string
+ * @param path - Repo-relative path used as fallback title
+ * @returns Title derived from the first heading, or a formatted filename
  */
-function extractTitle(content: string, path: DocsRepoRelativePath): string {
+function extractTitle(content: string, path: DocsRepoRelativePath) {
   const headingMatch = content.match(/^#+\s+(.+)$/m);
-  if (headingMatch?.[1]) return headingMatch[1].trim();
+
+  if (headingMatch?.[1]) {
+    return headingMatch[1].trim();
+  }
 
   const parts = path.split("/");
   const filename = parts[parts.length - 1]?.replace(".md", "") ?? path;
+
   return filename.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /**
- * Extract excerpt from markdown content (first non-heading paragraph)
+ * Whether a trimmed line is a reasonable start for a doc excerpt (not front matter, heading, or import).
+ * @param trimmed - Single line of markdown, already trimmed
  */
-function extractExcerpt(content: string, maxLength = 200): string {
+function isExcerptCandidateLine(trimmed: string) {
+  return (
+    Boolean(trimmed) &&
+    !trimmed.startsWith("#") &&
+    !trimmed.startsWith("---") &&
+    !trimmed.startsWith("import")
+  );
+}
+
+/**
+ * Remove common inline markdown from a single line for excerpt preview text.
+ * @param line - One line of markdown
+ */
+function stripInlineMarkdownForExcerpt(line: string) {
+  return line
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1");
+}
+
+/**
+ * Truncate excerpt text to a maximum length, appending an ellipsis when clipped.
+ * @param text - Plain-text line
+ * @param maxLength - Character cap
+ */
+function truncateExcerptText(text: string, maxLength: number) {
+  return text.slice(0, maxLength) + (text.length > maxLength ? "..." : "");
+}
+
+/**
+ * Extract excerpt from markdown content (first non-heading paragraph)
+ * @param content - Raw markdown string
+ * @param maxLength - Maximum excerpt length in characters (default: 200)
+ * @returns Plain-text excerpt string, or empty string if none found
+ */
+function extractExcerpt(content: string, maxLength = 200) {
   const lines = content.split("\n");
   let inCodeBlock = false;
 
@@ -112,25 +168,24 @@ function extractExcerpt(content: string, maxLength = 200): string {
       inCodeBlock = !inCodeBlock;
       continue;
     }
-    if (inCodeBlock) continue;
+
+    if (inCodeBlock) {
+      continue;
+    }
 
     const trimmed = line.trim();
-    if (
-      trimmed &&
-      !trimmed.startsWith("#") &&
-      !trimmed.startsWith("---") &&
-      !trimmed.startsWith("import")
-    ) {
-      const text = trimmed
-        .replace(/\*\*(.+?)\*\*/g, "$1")
-        .replace(/\*(.+?)\*/g, "$1")
-        .replace(/`(.+?)`/g, "$1")
-        .replace(/\[(.+?)\]\(.+?\)/g, "$1");
 
-      if (text.length > 10) {
-        return text.slice(0, maxLength) + (text.length > maxLength ? "..." : "");
-      }
+    if (!isExcerptCandidateLine(trimmed)) {
+      continue;
     }
+
+    const text = stripInlineMarkdownForExcerpt(trimmed);
+
+    if (text.length <= 10) {
+      continue;
+    }
+
+    return truncateExcerptText(text, maxLength);
   }
 
   return "";
@@ -138,8 +193,10 @@ function extractExcerpt(content: string, maxLength = 200): string {
 
 /**
  * Strip markdown formatting for plain text search
+ * @param content - Raw markdown string
+ * @returns Plain-text version with formatting removed
  */
-function stripMarkdown(content: string): string {
+function stripMarkdown(content: string) {
   return content
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`[^`]+`/g, "")
@@ -154,10 +211,10 @@ function stripMarkdown(content: string): string {
 
 /**
  * Build the search index from documentation files
+ * @param onProgress - Optional progress callback invoked with (current, total)
+ * @returns Fully built search index saved to disk
  */
-async function buildIndex(
-  onProgress?: (current: number, total: number) => void,
-): Promise<SearchIndex> {
+async function buildIndex(onProgress?: (current: number, total: number) => void) {
   mkdirSync(CACHE_DIR, { recursive: true });
 
   info("Building search index from documentation...");
@@ -169,12 +226,18 @@ async function buildIndex(
 
   for (let i = 0; i < paths.length; i++) {
     const path = paths[i];
-    if (!path) continue;
+
+    if (!path) {
+      continue;
+    }
 
     onProgress?.(i + 1, total);
 
     const fetchResult = await Result.tryPromise(() => docsFetcher(path));
-    if (fetchResult.isErr()) continue;
+
+    if (fetchResult.isErr()) {
+      continue;
+    }
 
     const content = fetchResult.value;
     const title = extractTitle(content, path);
@@ -190,20 +253,34 @@ async function buildIndex(
   return index;
 }
 
-function loadSearchIndexFromDisk(): SearchIndex | null {
+/**
+ * Read and validate the cached index from {@link INDEX_FILE}.
+ * @returns Parsed index with branded paths, or `null` if missing or invalid
+ */
+function loadSearchIndexFromDisk() {
   const raw: unknown = JSON.parse(readFileSync(INDEX_FILE, "utf-8"));
-  if (!isSearchIndex(raw)) return null;
+
+  if (!isSearchIndex(raw)) {
+    return null;
+  }
+
   return indexWithBrandedPaths(raw);
 }
 
 /**
  * Load or build the search index
+ * @param forceRebuild - If `true`, skip the cache and rebuild from scratch (default: false)
+ * @returns Search index loaded from disk or freshly built
  */
-async function getIndex(forceRebuild = false): Promise<SearchIndex> {
+async function getIndex(forceRebuild = false) {
   if (!forceRebuild && isIndexValid()) {
     const loaded = loadSearchIndexFromDisk();
-    if (loaded) return loaded;
+
+    if (loaded) {
+      return loaded;
+    }
   }
+
   return buildIndex((current, total) => {
     process.stdout.write(`\r  Indexing... ${current}/${total}`);
   });
@@ -211,12 +288,12 @@ async function getIndex(forceRebuild = false): Promise<SearchIndex> {
 
 /**
  * Search the documentation with fuzzy matching
+ * @param query - Search query string
+ * @param limit - Maximum number of results to return
+ * @param forceRebuild - If `true`, rebuild the search index before searching
+ * @returns Array of Fuse.js search results with score information
  */
-async function searchDocs(
-  query: string,
-  limit: number,
-  forceRebuild: boolean,
-): Promise<FuseResult<DocEntry>[]> {
+async function searchDocs(query: string, limit: number, forceRebuild: boolean) {
   const index = await getIndex(forceRebuild);
   const Fuse = (await import("fuse.js")).default;
 
@@ -234,7 +311,11 @@ async function searchDocs(
   return fuse.search(query, { limit });
 }
 
-export function registerSearchCommand(program: Command): void {
+/**
+ * Register the `elysia search` command on the given Commander program.
+ * @param program - Root or parent Commander instance
+ */
+export function registerSearchCommand(program: Command) {
   program
     .command("search <query>")
     .description("Search Elysia documentation")
@@ -257,20 +338,21 @@ export function registerSearchCommand(program: Command): void {
       }
 
       if (opts.pretty) {
-        console.log();
         header(`Search Results for "${query}"`);
-        console.log();
 
         for (let i = 0; i < results.length; i++) {
           const { item, score } = results[i]!;
           const relevance = Math.round((1 - (score ?? 0)) * 100);
+
           console.log(`  ${i + 1}. ${item.title}`);
+
           dim(`     Path: ${item.path}  (${relevance}% match)`);
+
           if (item.excerpt) {
             dim(`     ${item.excerpt}`);
           }
+
           dim(`     Run: elysia docs ${String(item.path).replace(".md", "")}`);
-          console.log();
         }
       } else {
         const output = results.map(({ item, score }) => ({

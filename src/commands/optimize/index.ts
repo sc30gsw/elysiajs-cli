@@ -7,12 +7,11 @@ import type { Command } from "commander";
 import { error, info, success, header, formatSize, exitOnError } from "~/utils/display.js";
 import { resolveEntryPath } from "~/utils/loader.js";
 
-export const OPTIMIZE_TARGETS = ["bun", "node", "browser"] as const;
+const OPTIMIZE_TARGETS = ["bun", "node", "browser"] as const satisfies readonly string[];
 
-export type OptimizeTarget = (typeof OPTIMIZE_TARGETS)[number];
+type OptimizeTarget = (typeof OPTIMIZE_TARGETS)[number];
 
-/** Resolved options for `elysia optimize` */
-export interface OptimizeResolvedOptions {
+interface OptimizeResolvedOptions {
   output: string;
   minify: boolean;
   target: OptimizeTarget;
@@ -21,7 +20,7 @@ export interface OptimizeResolvedOptions {
   external: string[];
 }
 
-export type OptimizeCliOptionsRaw = Partial<
+type OptimizeCliOptionsRaw = Partial<
   Omit<OptimizeResolvedOptions, "target" | "output" | "dryRun"> & {
     target?: string;
     output?: string;
@@ -29,10 +28,20 @@ export type OptimizeCliOptionsRaw = Partial<
   }
 >;
 
+/**
+ * Type guard: whether `s` is a valid {@link OPTIMIZE_TARGETS} value.
+ * @param s - Raw `--target` string from the CLI
+ */
 function isOptimizeTarget(s: string): s is OptimizeTarget {
   return (OPTIMIZE_TARGETS as readonly string[]).includes(s);
 }
 
+/**
+ * Validate and resolve CLI options for a given entry file path.
+ * @param filePath - Absolute path to the bundle entry (after CLI entry resolution)
+ * @param raw - Partial options from Commander
+ * @returns `Ok` with resolved paths and flags, or `Err` if `--target` is invalid
+ */
 function parseOptimizeOptions(
   filePath: string,
   raw: OptimizeCliOptionsRaw,
@@ -43,8 +52,10 @@ function parseOptimizeOptions(
       new Error(`Invalid target: "${targetStr}". Must be one of: ${OPTIMIZE_TARGETS.join(", ")}`),
     );
   }
+
   const target = targetStr;
   const output = resolveOutputPath(filePath, raw.output);
+
   return Result.ok({
     output,
     minify: raw.minify ?? false,
@@ -55,55 +66,79 @@ function parseOptimizeOptions(
   } satisfies OptimizeResolvedOptions);
 }
 
-/**
- * Default external packages (Elysia's peer dependencies and runtime-provided packages)
- */
-const DEFAULT_EXTERNALS = ["@sinclair/typebox", "file-type", "bun", "bun:*"];
+/** Packages always passed to esbuild `external` (merged with `-e, --external`). */
+const DEFAULT_EXTERNALS = [
+  "@sinclair/typebox",
+  "file-type",
+  "bun",
+  "bun:*",
+] as const satisfies readonly string[];
+
+/** esbuild `platform` derived from optimize target (`bun` builds use the Node platform). */
+const ESBUILD_PLATFORM_BY_TARGET = {
+  browser: "browser",
+  bun: "node",
+  node: "node",
+} as const satisfies Record<OptimizeTarget, "browser" | "node">;
+
+/** esbuild `target` string for each optimize target. */
+const ESBUILD_TARGET_BY_OPTIMIZE_TARGET = {
+  bun: "bun1.0",
+  browser: "es2022",
+  node: "node20",
+} as const satisfies Record<OptimizeTarget, string>;
 
 /**
  * Build output path from entry and options
+ * @param entry - Entry file path
+ * @param outputOpt - Optional explicit output path (overrides default)
+ * @returns Resolved absolute output file path
  */
-function resolveOutputPath(entry: string, outputOpt?: string): string {
-  if (outputOpt) return resolve(process.cwd(), outputOpt);
+function resolveOutputPath(entry: string, outputOpt?: string) {
+  if (outputOpt) {
+    return resolve(process.cwd(), outputOpt);
+  }
 
   const dir = dirname(entry);
   const base = basename(entry, extname(entry));
+
   return join(dir, "..", "dist", `${base}.js`);
 }
 
 /**
  * Get file size safely
+ * @param filePath - Path to the file
+ * @returns File size in bytes, or `0` if the file does not exist
  */
-function getFileSize(filePath: PathLike): number {
+function getFileSize(filePath: PathLike) {
   return Result.try(() => statSync(filePath).size).unwrapOr(0);
 }
 
 /**
  * Run esbuild optimization
+ * @param entry - Entry file path to bundle
+ * @param output - Output file path for the bundle
+ * @param opts - Resolved optimize options (target, minify, externals, etc.)
+ * @returns Resolves when the build (or dry-run / analysis) finishes
  */
-async function runOptimize(
-  entry: string,
-  output: string,
-  opts: OptimizeResolvedOptions,
-): Promise<void> {
+async function runOptimize(entry: string, output: string, opts: OptimizeResolvedOptions) {
   const esbuild = await import("esbuild");
 
   const external = [...DEFAULT_EXTERNALS, ...opts.external];
 
-  const platform = opts.target === "browser" ? "browser" : "node";
-  const target = opts.target === "bun" ? "bun1.0" : opts.target === "browser" ? "es2022" : "node20";
+  const platform = ESBUILD_PLATFORM_BY_TARGET[opts.target];
+  const target = ESBUILD_TARGET_BY_OPTIMIZE_TARGET[opts.target];
 
   const inputSize = getFileSize(entry);
 
   if (opts.dryRun) {
     header("Dry Run - Bundle Analysis");
-    console.log();
     info(`Entry:    ${entry}`);
     info(`Output:   ${output}`);
     info(`Target:   ${opts.target}`);
     info(`Minify:   ${opts.minify}`);
     info(`External: ${external.join(", ")}`);
-    console.log();
+
     return;
   }
 
@@ -124,9 +159,7 @@ async function runOptimize(
   const outputSize = getFileSize(output);
 
   header("Build Complete");
-  console.log();
   info(`Output: ${output}`);
-  console.log();
 
   if (outputSize > 0) {
     console.log(`  Bundle size: ${formatSize(outputSize)}`);
@@ -146,6 +179,10 @@ async function runOptimize(
   }
 }
 
+/**
+ * Register the `elysia optimize` command on the given Commander program.
+ * @param program - Root or parent Commander instance
+ */
 export function registerOptimizeCommand(program: Command): void {
   program
     .command("optimize [entry]")

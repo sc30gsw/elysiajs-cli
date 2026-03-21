@@ -8,8 +8,7 @@ import type { Command } from "commander";
 import { formatMethod, formatStatus, elapsed, header, error, info, dim } from "~/utils/display.js";
 import { loadApp } from "~/utils/loader.js";
 
-/** Resolved options for `elysia req` */
-export interface RequestResolvedOptions {
+interface RequestResolvedOptions {
   method: string;
   header: string[];
   body: string | undefined;
@@ -19,9 +18,14 @@ export interface RequestResolvedOptions {
   output: string | undefined;
 }
 
-export type RequestCliOptionsRaw = Partial<RequestResolvedOptions>;
+type RequestCliOptionsRaw = Partial<RequestResolvedOptions>;
 
-function parseRequestOptions(raw: RequestCliOptionsRaw): RequestResolvedOptions {
+/**
+ * Normalize partial CLI options into concrete values for a single request run.
+ * @param raw - Options as received from Commander (all fields optional)
+ * @returns Fully resolved request options with defaults applied
+ */
+function parseRequestOptions(raw: RequestCliOptionsRaw) {
   return {
     method: raw.method ?? "GET",
     header: raw.header ?? [],
@@ -30,38 +34,52 @@ function parseRequestOptions(raw: RequestCliOptionsRaw): RequestResolvedOptions 
     watch: raw.watch ?? false,
     json: raw.json ?? false,
     output: raw.output ?? undefined,
-  } satisfies RequestResolvedOptions;
+  } as const satisfies RequestResolvedOptions;
 }
 
 /**
  * Parse header strings into Headers object
+ * @param headers - Array of header strings in "Name: Value" format
+ * @returns `Ok` with a populated Headers object, or `Err` if any header is malformed
  */
-function parseHeaders(headers: string[]): Result<Headers, Error> {
+function parseHeaders(headers: string[]) {
   const result = new Headers();
+
   for (const h of headers) {
     const colonIdx = h.indexOf(":");
+
     if (colonIdx === -1) {
       return Result.err(new Error(`Invalid header format: "${h}". Expected "Name: Value"`));
     }
+
     const name = h.slice(0, colonIdx).trim();
     const value = h.slice(colonIdx + 1).trim();
+
     result.set(name, value);
   }
+
   return Result.ok(result);
 }
 
 /**
  * Build a Request object from parsed headers and options
+ * @param url - Fully qualified URL for the request
+ * @param headers - Parsed request headers
+ * @param opts - Resolved request options (method, body, etc.)
+ * @returns Constructed Request object ready for dispatch
  */
-function buildRequest(url: string, headers: Headers, opts: RequestResolvedOptions): Request {
-  // Set Content-Type for body if not set
+function buildRequest(url: string, headers: Headers, opts: RequestResolvedOptions) {
   if (opts.body && !headers.has("content-type")) {
-    try {
-      JSON.parse(opts.body);
-      headers.set("content-type", "application/json");
-    } catch {
-      headers.set("content-type", "text/plain");
-    }
+    const body = opts.body;
+
+    Result.try(() => JSON.parse(body)).match({
+      ok: () => {
+        headers.set("content-type", "application/json");
+      },
+      err: () => {
+        headers.set("content-type", "text/plain");
+      },
+    });
   }
 
   return new Request(url, {
@@ -73,36 +91,86 @@ function buildRequest(url: string, headers: Headers, opts: RequestResolvedOption
 
 /**
  * Format response body for display
+ * @param response - HTTP response to read body from
+ * @param forceJson - If `true`, attempt to pretty-print as JSON regardless of content type
+ * @returns Formatted body string
  */
-async function formatBody(response: Response, forceJson: boolean): Promise<string> {
+async function formatBody(response: Response, forceJson: boolean) {
   const contentType = response.headers.get("content-type") ?? "";
   const text = await response.text();
 
   if (forceJson || contentType.includes("application/json")) {
-    try {
-      const parsed = JSON.parse(text);
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return text;
-    }
+    return Result.try(() => JSON.parse(text)).match({
+      ok: (parsed) => JSON.stringify(parsed, null, 2),
+      err: () => text,
+    });
   }
 
   return text;
 }
 
 /**
- * Execute a request against an Elysia app
+ * Print request line, headers, and body (pretty JSON when parseable) in verbose mode.
+ * @param url - Full request URL
+ * @param method - HTTP method label
+ * @param headers - Headers after parsing (including inferred `Content-Type` from {@link buildRequest})
+ * @param body - Optional raw body string
  */
-async function executeRequest(
-  entry: string,
-  urlOrPath: string,
-  opts: RequestResolvedOptions,
-): Promise<Result<void, Error>> {
+function logVerboseRequest(
+  url: string,
+  method: string,
+  headers: Headers,
+  body: string | undefined,
+) {
+  header("Request");
+  console.log(`  ${formatMethod(method)}  ${url}`);
+
+  for (const [name, value] of headers.entries()) {
+    dim(`  ${name}: ${value}`);
+  }
+
+  if (!body) {
+    return;
+  }
+
+  info("Body:");
+  Result.try(() => JSON.parse(body)).match({
+    ok: (parsed) => {
+      console.log(JSON.stringify(parsed, null, 2));
+    },
+    err: () => {
+      console.log(body);
+    },
+  });
+}
+
+/**
+ * Print status line and response headers in verbose mode.
+ * @param response - Response from `app.handle`
+ * @param status - Colored status code string from {@link formatStatus}
+ * @param time - Dimmed elapsed time label
+ */
+function logVerboseResponse(response: Response, status: string, time: string) {
+  header("Response");
+  console.log(`  ${status} ${response.statusText}  ${time}`);
+
+  for (const [name, value] of response.headers.entries()) {
+    dim(`  ${name}: ${value}`);
+  }
+}
+
+/**
+ * Execute a request against an Elysia app
+ * @param entry - Entry file path for the Elysia app
+ * @param urlOrPath - URL or path to request (e.g., "/api/users" or "http://localhost/...")
+ * @param opts - Resolved request options
+ * @returns `Ok` on success, or `Err` with a descriptive error
+ */
+async function executeRequest(entry: string, urlOrPath: string, opts: RequestResolvedOptions) {
   return Result.gen(async function* () {
     const { app } = yield* Result.await(loadApp(entry));
     const headers = yield* parseHeaders(opts.header);
 
-    // Build the URL - if path is given without host, use localhost
     const url = urlOrPath.startsWith("http")
       ? urlOrPath
       : `http://localhost${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;
@@ -110,23 +178,7 @@ async function executeRequest(
     const request = buildRequest(url, headers, opts);
 
     if (opts.verbose) {
-      header("Request");
-      console.log(`  ${formatMethod(opts.method)}  ${url}`);
-
-      for (const [name, value] of headers.entries()) {
-        dim(`  ${name}: ${value}`);
-      }
-
-      if (opts.body) {
-        console.log();
-        info("Body:");
-        try {
-          console.log(JSON.stringify(JSON.parse(opts.body), null, 2));
-        } catch {
-          console.log(opts.body);
-        }
-      }
-      console.log();
+      logVerboseRequest(url, opts.method, headers, opts.body);
     }
 
     const start = Date.now();
@@ -142,13 +194,7 @@ async function executeRequest(
     const time = chalk.dim(`${elapsed(ms)}`);
 
     if (opts.verbose) {
-      header("Response");
-      console.log(`  ${status} ${response.statusText}  ${time}`);
-
-      for (const [name, value] of response.headers.entries()) {
-        dim(`  ${name}: ${value}`);
-      }
-      console.log();
+      logVerboseResponse(response, status, time);
     } else {
       console.log(`${status} ${time}`);
     }
@@ -172,7 +218,11 @@ async function executeRequest(
   });
 }
 
-export function registerRequestCommand(program: Command): void {
+/**
+ * Register the `elysia request` / `elysia req` command on the given Commander program.
+ * @param program - Root or parent Commander instance
+ */
+export function registerRequestCommand(program: Command) {
   program
     .command("request [file] [url]")
     .alias("req")
@@ -190,6 +240,7 @@ export function registerRequestCommand(program: Command): void {
       const options = parseRequestOptions(rawOpts);
 
       const result = await executeRequest(resolvedFile, resolvedUrl, options);
+
       if (result.isErr()) {
         error(result.error.message);
         process.exit(1);
@@ -202,7 +253,6 @@ export function registerRequestCommand(program: Command): void {
         info(`Watching ${resolvedFile} for changes...`);
 
         watcher.on("change", async () => {
-          console.log();
           info("File changed, re-running request...");
           const r = await executeRequest(resolvedFile, resolvedUrl, options);
           if (r.isErr()) {

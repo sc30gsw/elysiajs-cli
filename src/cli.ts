@@ -14,8 +14,9 @@ import { isPackageJsonWithVersion } from "~/types/package-json.js";
 
 /**
  * Read package version from package.json
+ * @returns The version string from package.json, or "0.0.0" if not found
  */
-function getVersion(): string {
+function getVersion() {
   return Result.try(() => {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
@@ -37,19 +38,16 @@ program
   .description("Official CLI for ElysiaJS - Build fast, type-safe web APIs")
   .version(getVersion(), "-V, --version", "Output the current version");
 
-// Register all commands
 registerDocsCommand(program);
 registerSearchCommand(program);
 registerRequestCommand(program);
 registerServeCommand(program);
 registerOptimizeCommand(program);
 
-// Show help if no command is given
-program.addHelpCommand("help [command]", "Display help for command");
+program.helpCommand("help [command]", "Display help for command");
 
 program.parse(process.argv);
 
-// Show help if no arguments provided
 if (process.argv.length <= 2) {
   program.help();
 }

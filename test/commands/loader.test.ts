@@ -20,7 +20,6 @@ describe("resolveEntryPath", () => {
 
   it("should try adding .ts extension", () => {
     const fixturesDir = resolve(import.meta.dirname, "../fixtures");
-    // Pass path without extension
     const result = resolveEntryPath(`${fixturesDir}/basic-app`);
     expect(result.isOk()).toBe(true);
     expect(result.isOk() && result.value).toBe(`${fixturesDir}/basic-app.ts`);

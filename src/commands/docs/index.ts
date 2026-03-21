@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, type PathLike } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  statSync,
+  unlinkSync,
+  type PathLike,
+} from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -7,68 +15,109 @@ import type { Command } from "commander";
 import { isResponseError } from "up-fetch";
 
 import {
-  DOC_CATEGORIES,
-  TABLE_OF_CONTENTS_PATH,
   normalizeDocsRepoRelativePath,
   type DocsRepoRelativePath,
 } from "~/types/docs-repo-path.js";
 import { info, header, dim, exitOnError } from "~/utils/display.js";
 import { docsFetcher } from "~/utils/fetcher.js";
 
+const TABLE_OF_CONTENTS_PATH = "table-of-content.md" as DocsRepoRelativePath;
 const CACHE_DIR = join(homedir(), ".cache", "elysia-cli", "docs");
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const DOC_CATEGORIES = [
+  "blog",
+  "components",
+  "eden",
+  "essential",
+  "integrations",
+  "internal",
+  "migrate",
+  "patterns",
+  "playground",
+  "plugins",
+  "tutorial",
+] as const satisfies readonly string[];
 
-/** Resolved CLI options for `elysia docs` */
-export interface DocsResolvedOptions {
+interface DocsResolvedOptions {
   cache: boolean;
 }
 
-/** Commander passes inverted `--no-cache` as `cache: false` when set */
-export type DocsCliOptionsRaw = Partial<Pick<DocsResolvedOptions, "cache">>;
+type DocsCliOptionsRaw = Partial<Pick<DocsResolvedOptions, "cache">>;
 
-function parseDocsOptions(raw: DocsCliOptionsRaw): DocsResolvedOptions {
+/**
+ * Derive cache behavior from Commander options (`--no-cache` sets {@link DocsResolvedOptions.cache} to `false`).
+ * @param raw - Partial CLI options
+ * @returns Resolved options (defaults to using cache when unspecified)
+ */
+function parseDocsOptions(raw: DocsCliOptionsRaw) {
   const resolved = {
     cache: raw.cache !== false,
-  } satisfies DocsResolvedOptions;
+  } as const satisfies DocsResolvedOptions;
+
   return resolved;
 }
 
 /**
  * Get cache file path for a docs path
+ * @param docsPath - Repo-relative docs path
+ * @returns Absolute path to the local cache file
  */
-function getCachePath(docsPath: DocsRepoRelativePath): string {
+function getCachePath(docsPath: DocsRepoRelativePath) {
   const safe = docsPath.replace(/\//g, "__").replace(/\.md$/, "") + ".md";
   return join(CACHE_DIR, safe);
 }
 
 /**
  * Check if cached content is still valid
+ * @param cachePath - Path to the cache file
+ * @returns `true` if the cache file exists and is within the 24-hour TTL
  */
-function isCacheValid(cachePath: PathLike): boolean {
-  if (!existsSync(cachePath)) return false;
+function isCacheValid(cachePath: PathLike) {
+  if (!existsSync(cachePath)) {
+    return false;
+  }
+
   const stat = statSync(cachePath);
+
   return Date.now() - stat.mtimeMs < CACHE_TTL_MS;
 }
 
 /**
  * Read from cache
+ * @param cachePath - Path to the cache file
+ * @returns UTF-8 content of the cache file
  */
-function readCache(cachePath: PathLike): string {
+function readCache(cachePath: PathLike) {
   return readFileSync(cachePath, "utf-8");
 }
 
 /**
  * Write to cache
+ * @param cachePath - Path to the cache file
+ * @param content - Content to write
  */
-function writeCache(cachePath: PathLike, content: string): void {
+function writeCache(cachePath: PathLike, content: string) {
   mkdirSync(CACHE_DIR, { recursive: true });
   writeFileSync(cachePath, content, "utf-8");
 }
 
 /**
- * Fetch a markdown file from the documentation repository
+ * Remove the on-disk cache for a user-supplied docs path (e.g. when `--no-cache` is set)
+ * @param docPathArg - Raw path argument from the CLI
  */
-async function fetchDoc(docPath: DocsRepoRelativePath): Promise<Result<string, Error>> {
+function clearDocsCacheForUserPath(docPathArg: string) {
+  const normalizedPath = normalizeDocsRepoRelativePath(docPathArg);
+  const cachePath = getCachePath(normalizedPath);
+  if (!existsSync(cachePath)) return;
+  unlinkSync(cachePath);
+}
+
+/**
+ * Fetch a markdown file from the documentation repository
+ * @param docPath - Repo-relative path to the documentation file
+ * @returns `Ok` with the markdown content, or `Err` with a descriptive error
+ */
+async function fetchDoc(docPath: DocsRepoRelativePath) {
   const cachePath = getCachePath(docPath);
 
   if (isCacheValid(cachePath)) {
@@ -90,16 +139,22 @@ async function fetchDoc(docPath: DocsRepoRelativePath): Promise<Result<string, E
             `Example: elysia docs essential/route`,
         );
       }
+
       if (isResponseError(e)) {
         return new Error(`Failed to fetch documentation: ${e.status} ${e.message}`);
       }
+
       return e instanceof Error ? e : new Error(String(e));
     },
   });
 }
 
-/** Render markdown in the terminal via marked-terminal's marked v9+ extension. */
-async function renderMarkdown(content: string): Promise<void> {
+/**
+ * Render markdown in the terminal via marked-terminal's marked v9+ extension.
+ * @param content - Raw markdown string to render
+ * @returns Resolves after printing rendered HTML to stdout
+ */
+async function renderMarkdown(content: string) {
   const { marked } = await import("marked");
   const { markedTerminal } = await import("marked-terminal");
 
@@ -109,9 +164,10 @@ async function renderMarkdown(content: string): Promise<void> {
 }
 
 /**
- * Display the table of contents
+ * Display the documentation table of contents, or a static category list if the TOC page cannot be fetched.
+ * @returns Resolves after rendering or printing the fallback help text
  */
-async function showTableOfContents(): Promise<void> {
+async function showTableOfContents() {
   const result = await fetchDoc(TABLE_OF_CONTENTS_PATH);
   await result.match({
     ok: async (content) => {
@@ -120,13 +176,12 @@ async function showTableOfContents(): Promise<void> {
     err: async () => {
       // If table of contents doesn't exist, show a helpful message
       header("Elysia Documentation");
-      console.log();
       info("Available documentation categories:");
-      console.log();
+
       for (const category of DOC_CATEGORIES) {
         console.log(`  elysia docs ${category}/<page>`);
       }
-      console.log();
+
       console.log("Examples:");
       console.log("  elysia docs essential/route");
       console.log("  elysia docs essential/handler");
@@ -135,6 +190,10 @@ async function showTableOfContents(): Promise<void> {
   });
 }
 
+/**
+ * Register the `elysia docs` command on the given Commander program.
+ * @param program - Root or parent Commander instance
+ */
 export function registerDocsCommand(program: Command): void {
   program
     .command("docs [path]")
@@ -143,15 +202,8 @@ export function registerDocsCommand(program: Command): void {
     .action(async (docPathArg?: string, rawOpts: DocsCliOptionsRaw = {}) => {
       const opts = parseDocsOptions(rawOpts);
 
-      if (!opts.cache) {
-        if (docPathArg) {
-          const normalizedPath = normalizeDocsRepoRelativePath(docPathArg);
-          const cachePath = getCachePath(normalizedPath);
-          if (existsSync(cachePath)) {
-            const fs = await import("fs");
-            fs.unlinkSync(cachePath);
-          }
-        }
+      if (!opts.cache && docPathArg) {
+        clearDocsCacheForUserPath(docPathArg);
       }
 
       if (!docPathArg) {

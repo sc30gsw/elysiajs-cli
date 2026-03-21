@@ -10,9 +10,6 @@ export interface LoadedApp {
   filePath: string;
 }
 
-/**
- * Minimal interface for Elysia app instances
- */
 export interface ElysiaApp {
   handle: (request: Request) => Promise<Response>;
   routes: Array<{
@@ -29,22 +26,31 @@ export type ElysiaRoute = ElysiaApp["routes"][number];
 
 /**
  * Check if the given module export is an Elysia app
+ * @param value - Module export to check
+ * @returns `true` if value has a `handle` function and a `routes` array
  */
 function isElysiaApp(value: unknown): value is ElysiaApp {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
   const obj = value as Record<string, unknown>;
+
   return typeof obj["handle"] === "function" && Array.isArray(obj["routes"]);
 }
 
 /**
  * Resolve the entry file path
+ * @param entry - Entry file path (relative or absolute)
+ * @returns `Ok` with the resolved absolute path, or `Err` if not found
  */
-export function resolveEntryPath(entry: string): Result<string, Error> {
+export function resolveEntryPath(entry: string) {
   const abs = resolve(process.cwd(), entry);
 
-  if (existsSync(abs)) return Result.ok(abs);
+  if (existsSync(abs)) {
+    return Result.ok(abs);
+  }
 
-  // Try common extensions
   const extensions = [".ts", ".tsx", ".js", ".mjs"];
   for (const ext of extensions) {
     const withExt = abs + ext;
@@ -56,6 +62,9 @@ export function resolveEntryPath(entry: string): Result<string, Error> {
 
 /**
  * Transpile TypeScript to JavaScript using esbuild (for Node.js)
+ * @param filePath - Path to the TypeScript source file
+ * @returns Absolute path to the transpiled `.mjs` output file
+ * @throws If esbuild fails to transpile the file
  */
 async function transpileWithEsbuild(filePath: PathLike): Promise<string> {
   const esbuild = await import("esbuild");
@@ -75,7 +84,7 @@ async function transpileWithEsbuild(filePath: PathLike): Promise<string> {
     format: "esm",
     platform: "node",
     target: "node20",
-    // Don't externalize elysia so it gets bundled in and works from temp dir
+    //? Don't externalize elysia so it gets bundled in and works from temp dir
     external: ["bun", "bun:*"],
     sourcemap: "inline",
     logLevel: "silent",
@@ -86,16 +95,32 @@ async function transpileWithEsbuild(filePath: PathLike): Promise<string> {
 }
 
 /**
- * Dynamically load an Elysia app from a file
+ * Convert file path to file URL
+ * @param filePath - Absolute file path (supports Windows and POSIX)
+ * @returns `file://` URL string
  */
-export async function loadApp(entry: string): Promise<Result<LoadedApp, Error>> {
+function pathToFileUrl(filePath: string) {
+  const normalizedPath = filePath.replace(/\\/g, "/");
+
+  if (normalizedPath.startsWith("/")) {
+    return `file://${normalizedPath}`;
+  }
+
+  return `file:///${normalizedPath}`;
+}
+
+/**
+ * Dynamically load an Elysia app from a file
+ * @param entry - Entry file path (relative or absolute)
+ * @returns `Ok` with the loaded app and resolved file path, or `Err` on failure
+ */
+export async function loadApp(entry: string) {
   return Result.gen(async function* () {
     const filePath = yield* resolveEntryPath(entry);
     const ext = extname(filePath);
 
     let modulePath = filePath;
 
-    // For Node.js, transpile TypeScript first
     if (!isBun() && (ext === ".ts" || ext === ".tsx")) {
       modulePath = yield* Result.await(
         Result.tryPromise({
@@ -105,7 +130,6 @@ export async function loadApp(entry: string): Promise<Result<LoadedApp, Error>> 
       );
     }
 
-    // Dynamic import with cache-busting for watch mode
     const moduleUrl = `${pathToFileUrl(modulePath)}?t=${Date.now()}`;
     const module_ = yield* Result.await(
       Result.tryPromise({
@@ -114,7 +138,6 @@ export async function loadApp(entry: string): Promise<Result<LoadedApp, Error>> 
       }),
     );
 
-    // Try default export first, then named 'app' export
     const app = module_.default ?? module_.app;
 
     if (!isElysiaApp(app)) {
@@ -128,16 +151,4 @@ export async function loadApp(entry: string): Promise<Result<LoadedApp, Error>> 
 
     return Result.ok({ app, filePath });
   });
-}
-
-/**
- * Convert file path to file URL
- */
-function pathToFileUrl(filePath: string): string {
-  // Handle Windows paths
-  const normalizedPath = filePath.replace(/\\/g, "/");
-  if (normalizedPath.startsWith("/")) {
-    return `file://${normalizedPath}`;
-  }
-  return `file:///${normalizedPath}`;
 }

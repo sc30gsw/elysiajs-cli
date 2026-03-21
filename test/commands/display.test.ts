@@ -14,7 +14,16 @@ describe("formatMethod", () => {
   });
 
   it("should handle all common HTTP methods", () => {
-    const methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+    const methods = [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "HEAD",
+      "OPTIONS",
+    ] as const satisfies readonly string[];
+
     for (const method of methods) {
       const result = formatMethod(method);
       expect(result).toBeTruthy();

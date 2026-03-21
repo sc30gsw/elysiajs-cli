@@ -18,6 +18,7 @@ describe("request command - core functionality", () => {
   it("should handle GET request", async () => {
     const response = await app.handle(new Request("http://localhost/"));
     expect(response.status).toBe(200);
+
     const text = await response.text();
     expect(text).toBe("Hello Elysia");
   });
@@ -25,6 +26,7 @@ describe("request command - core functionality", () => {
   it("should handle GET request returning JSON", async () => {
     const response = await app.handle(new Request("http://localhost/json"));
     expect(response.status).toBe(200);
+
     const data = await response.json();
     expect(data).toEqual({ message: "json response" });
   });
@@ -38,7 +40,9 @@ describe("request command - core functionality", () => {
         body,
       }),
     );
+
     expect(response.status).toBe(200);
+
     const data = await response.json();
     expect(data).toEqual({ key: "value" });
   });
@@ -73,13 +77,19 @@ describe("header parsing", () => {
   it("should parse header strings correctly", () => {
     const parseHeaders = (headers: string[]): Record<string, string> => {
       const result: Record<string, string> = {};
+
       for (const h of headers) {
         const colonIdx = h.indexOf(":");
-        if (colonIdx === -1) throw new Error(`Invalid header: ${h}`);
+
+        if (colonIdx === -1) {
+          throw new Error(`Invalid header: ${h}`);
+        }
+
         const name = h.slice(0, colonIdx).trim().toLowerCase();
         const value = h.slice(colonIdx + 1).trim();
         result[name] = value;
       }
+
       return result;
     };
 
@@ -87,6 +97,7 @@ describe("header parsing", () => {
       "Content-Type: application/json",
       "Authorization: Bearer token123",
     ]);
+
     expect(result["content-type"]).toBe("application/json");
     expect(result["authorization"]).toBe("Bearer token123");
   });

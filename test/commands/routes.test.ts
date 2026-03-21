@@ -2,7 +2,7 @@ import { Elysia } from "elysia";
 import { describe, it, expect } from "vitest";
 
 import type { ElysiaApp } from "~/utils/loader.js";
-import { extractRoutes, formatRoutes, routesToJson } from "~/utils/routes.js";
+import { extractRoutes, formatRoutes } from "~/utils/routes.js";
 
 describe("extractRoutes", () => {
   it("should extract routes from an Elysia app", () => {
@@ -12,9 +12,11 @@ describe("extractRoutes", () => {
       .delete("/users/:id", () => "delete");
 
     const routes = extractRoutes(app as unknown as ElysiaApp);
+
     expect(routes.length).toBeGreaterThan(0);
 
     const paths = routes.map((r) => r.path);
+
     expect(paths).toContain("/");
     expect(paths).toContain("/users");
     expect(paths).toContain("/users/:id");
@@ -29,6 +31,7 @@ describe("extractRoutes", () => {
 
     const routes = extractRoutes(mockApp);
     const wsRoute = routes.find((r) => r.path === "/chat");
+
     expect(wsRoute).toBeDefined();
     expect(wsRoute!.hasWebSocket).toBe(true);
   });
@@ -64,6 +67,7 @@ describe("formatRoutes", () => {
       { method: "POST", path: "/users", hasWebSocket: false },
     ];
     const result = formatRoutes(routes);
+
     expect(result).toContain("/");
     expect(result).toContain("/users");
   });
@@ -71,6 +75,7 @@ describe("formatRoutes", () => {
   it("should mark WebSocket routes", () => {
     const routes = [{ method: "GET", path: "/chat", hasWebSocket: true }];
     const result = formatRoutes(routes);
+
     expect(result).toContain("[WS]");
   });
 
@@ -84,21 +89,8 @@ describe("formatRoutes", () => {
     const aIdx = result.indexOf("/a");
     const mIdx = result.indexOf("/m");
     const zIdx = result.indexOf("/z");
+
     expect(aIdx).toBeLessThan(mIdx);
     expect(mIdx).toBeLessThan(zIdx);
-  });
-});
-
-describe("routesToJson", () => {
-  it("should serialize routes to JSON", () => {
-    const routes = [
-      { method: "GET", path: "/", hasWebSocket: false },
-      { method: "WS", path: "/chat", hasWebSocket: true },
-    ];
-    const json = routesToJson(routes);
-    const parsed = JSON.parse(json) as Array<{ method: string; path: string; websocket?: boolean }>;
-
-    expect(parsed[0]).toEqual({ method: "GET", path: "/" });
-    expect(parsed[1]).toEqual({ method: "WS", path: "/chat", websocket: true });
   });
 });

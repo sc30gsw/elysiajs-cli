@@ -13,8 +13,12 @@ export interface SearchIndex {
 }
 
 function isDocEntry(value: unknown): value is DocEntry {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
   const o = value as Record<string, unknown>;
+
   return (
     typeof o.path === "string" &&
     typeof o.title === "string" &&
@@ -24,14 +28,25 @@ function isDocEntry(value: unknown): value is DocEntry {
 }
 
 export function isSearchIndex(value: unknown): value is SearchIndex {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
   const o = value as Record<string, unknown>;
-  if (typeof o.createdAt !== "number" || !Array.isArray(o.entries)) return false;
+
+  if (typeof o.createdAt !== "number" || !Array.isArray(o.entries)) {
+    return false;
+  }
+
   return o.entries.every(isDocEntry);
 }
 
-/** Narrow JSON-parsed paths to branded repo-relative paths (validated as strings). */
-export function indexWithBrandedPaths(index: SearchIndex): SearchIndex {
+/**
+ * Narrow JSON-parsed paths to branded repo-relative paths (validated as strings)
+ * @param index - Search index with plain string paths
+ * @returns Search index with branded `DocsRepoRelativePath` paths
+ */
+export function indexWithBrandedPaths(index: SearchIndex) {
   return {
     createdAt: index.createdAt,
     entries: index.entries.map((e) => ({
