@@ -34,7 +34,7 @@
     "oxfmt:fix": "oxfmt",
     "oxlint:check": "oxlint",
     "oxlint:fix": "oxlint --fix",
-    "postinstall": "lefthook install",
+    "prepare": "lefthook install || true",
     "test": "vitest run",
     "test:build": "bun run build && vitest run",
     "test:build:coverage": "bun run build && vitest run --coverage",
