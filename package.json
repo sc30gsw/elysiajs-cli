@@ -1,7 +1,7 @@
 {
   "name": "@sc30gsw/elysiajs-cli",
   "version": "0.1.7",
-  "description": "Official CLI for ElysiaJS",
+  "description": "CLI for ElysiaJS",
   "keywords": [
     "bun",
     "cli",
